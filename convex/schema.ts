@@ -1,0 +1,82 @@
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  categories: defineTable({
+    name: v.string(),
+    type: v.union(v.literal("expense"), v.literal("income")),
+    icon: v.optional(v.string()),
+    subcategories: v.array(
+      v.object({ name: v.string(), icon: v.optional(v.string()) })
+    ),
+  }).index("by_type", ["type"]),
+
+  transactions: defineTable({
+    kind: v.union(v.literal("expense"), v.literal("income")),
+    amount: v.number(),
+    categoryId: v.id("categories"),
+    subcategory: v.optional(v.string()),
+    accountId: v.optional(v.id("accounts")),
+    note: v.optional(v.string()),
+    date: v.number(), // epoch ms
+    billImageId: v.optional(v.id("_storage")),
+  })
+    .index("by_date", ["date"])
+    .index("by_category", ["categoryId"]),
+
+  budgets: defineTable({
+    month: v.string(), // "YYYY-MM"
+    incomeGoal: v.optional(v.number()),
+    expenseBudget: v.optional(v.number()),
+    savingsGoal: v.optional(v.number()),
+    categoryBudgets: v.optional(
+      v.array(v.object({ categoryId: v.id("categories"), amount: v.number() }))
+    ),
+  }).index("by_month", ["month"]),
+
+  accounts: defineTable({
+    name: v.string(),
+    type: v.union(
+      v.literal("savings"),
+      v.literal("wallet"),
+      v.literal("investment")
+    ),
+    bankName: v.optional(v.string()),
+    openingBalance: v.number(),
+  }),
+
+  stocks: defineTable({
+    symbol: v.string(), // NSE default, .BO for BSE
+    name: v.optional(v.string()),
+    exchange: v.optional(v.union(v.literal("NSE"), v.literal("BSE"))),
+    quantity: v.number(),
+    buyPrice: v.number(),
+    buyDate: v.number(),
+    buyCharges: v.optional(v.number()),
+    closed: v.boolean(),
+  }).index("by_closed", ["closed"]),
+
+  stockExits: defineTable({
+    stockId: v.id("stocks"),
+    quantity: v.number(),
+    exitPrice: v.number(),
+    exitDate: v.number(),
+    charges: v.optional(v.number()),
+  }).index("by_stock", ["stockId"]),
+
+  dividends: defineTable({
+    stockId: v.id("stocks"),
+    amount: v.number(),
+    date: v.number(),
+    note: v.optional(v.string()),
+  }).index("by_stock", ["stockId"]),
+
+  mutualFunds: defineTable({
+    name: v.string(),
+    units: v.number(),
+    avgNav: v.number(),
+    navSymbol: v.optional(v.string()), // Yahoo symbol for live NAV
+    manualNav: v.optional(v.number()),
+    buyDate: v.optional(v.number()),
+  }),
+});

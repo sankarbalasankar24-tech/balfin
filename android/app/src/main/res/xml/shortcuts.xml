@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="quick-add-expense"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_expense"
+        android:shortcutShortLabel="@string/shortcut_expense_short"
+        android:shortcutLongLabel="@string/shortcut_expense_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="balfin://quick-add?kind=expense"
+            android:targetPackage="com.balfin.app"
+            android:targetClass="com.balfin.app.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="quick-add-income"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_income"
+        android:shortcutShortLabel="@string/shortcut_income_short"
+        android:shortcutLongLabel="@string/shortcut_income_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="balfin://quick-add?kind=income"
+            android:targetPackage="com.balfin.app"
+            android:targetClass="com.balfin.app.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="investments"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_invest"
+        android:shortcutShortLabel="@string/shortcut_invest_short"
+        android:shortcutLongLabel="@string/shortcut_invest_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="balfin://invest"
+            android:targetPackage="com.balfin.app"
+            android:targetClass="com.balfin.app.MainActivity" />
+    </shortcut>
+</shortcuts>
