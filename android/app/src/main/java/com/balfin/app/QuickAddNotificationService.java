@@ -82,6 +82,7 @@ public class QuickAddNotificationService extends Service {
     } else {
       builder = new Notification.Builder(this);
     }
+    // IMPORTANCE_LOW channel (created above) keeps the notification silent.
     builder
         .setSmallIcon(android.R.drawable.ic_menu_add)
         .setContentTitle("BalFin quick add")
@@ -90,9 +91,6 @@ public class QuickAddNotificationService extends Service {
         .setContentIntent(pOpen)
         .addAction(new Notification.Action.Builder(null, "− Expense", pExpense).build())
         .addAction(new Notification.Action.Builder(null, "+ Income", pIncome).build());
-    if (Build.VERSION.SDK_INT >= 29) {
-      builder.setSilent(true);
-    }
     return builder.build();
   }
 }
