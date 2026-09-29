@@ -1,8 +1,13 @@
 @import "tailwindcss";
 
+/* Dark mode is class-driven (html.dark), not prefers-color-scheme —
+   without this line Tailwind v4's dark: utilities follow the OS instead
+   of the in-app toggle. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Fraunces", "Georgia", serif;
+  --font-sans: "Nunito", ui-rounded, system-ui, sans-serif;
+  --font-display: "Nunito", ui-rounded, system-ui, sans-serif;
 
   --color-primary: oklch(0.45 0.09 205);
   --color-primary-dark: oklch(0.36 0.08 205);
@@ -21,9 +26,27 @@
   --color-ink-faint: oklch(0.65 0.012 90);
 }
 
+/* Dark palette — the in-app toggle adds .dark to <html>; overriding the
+   same token names here flips every bg-card / text-ink / bg-surface-2
+   across the app automatically. */
+.dark {
+  --color-surface: oklch(0.17 0.01 250);
+  --color-surface-2: oklch(0.22 0.012 250);
+  --color-card: oklch(0.21 0.012 250);
+  --color-line: oklch(0.31 0.015 250);
+  --color-ink: oklch(0.93 0.005 250);
+  --color-ink-soft: oklch(0.72 0.01 250);
+  --color-ink-faint: oklch(0.56 0.012 250);
+  --color-primary-soft: oklch(0.3 0.04 205);
+}
+
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
+    color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
   }
   body {
     @apply bg-surface text-ink font-sans antialiased;

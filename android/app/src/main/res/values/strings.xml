@@ -9,6 +9,4 @@
     <string name="shortcut_invest_short">Investments</string>
     <string name="shortcut_invest_long">View investments</string>
     <string name="shortcut_disabled">Shortcut disabled</string>
-    <string name="widget_add_expense">Add expense</string>
-    <string name="widget_add_income">Add income</string>
 </resources>

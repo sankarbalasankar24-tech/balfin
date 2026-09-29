@@ -27,32 +27,34 @@
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
 
-            <!-- balfin:// deep links from widget and shortcuts -->
+            <!-- balfin:// deep links from notification actions and shortcuts -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="balfin" />
             </intent-filter>
-
-            <!-- View intent handled from App Actions / assistant -->
-            <intent-filter android:autoVerify="false">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="balfin" android:host="quick-add" />
-            </intent-filter>
         </activity>
 
+        <!-- Persistent quick-add notification (tray actions open a pre-filled
+             entry sheet via balfin:// quick-add deep links). -->
+        <service
+            android:name=".QuickAddNotificationService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Persistent quick-add controls so the user can log finance entries from the notification tray." />
+        </service>
+
+        <!-- Restore the quick-add notification after reboot (only if enabled). -->
         <receiver
-            android:name=".QuickAddWidgetProvider"
+            android:name=".QuickAddBootReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/widget_quick_add_info" />
         </receiver>
 
         <provider
@@ -68,4 +70,8 @@
 
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 </manifest>

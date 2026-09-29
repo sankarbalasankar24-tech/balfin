@@ -50,6 +50,7 @@ export default defineSchema({
     name: v.optional(v.string()),
     exchange: v.optional(v.union(v.literal("NSE"), v.literal("BSE"))),
     quantity: v.number(),
+    bonuses: v.optional(v.number()), // bonus shares credited — held at zero cost
     buyPrice: v.number(),
     buyDate: v.number(),
     buyCharges: v.optional(v.number()),
@@ -79,4 +80,24 @@ export default defineSchema({
     manualNav: v.optional(v.number()),
     buyDate: v.optional(v.number()),
   }),
+
+  // Deposit-type investments: fixed deposits, PPF, and recurring-style
+  // funds tracked by flows instead of units. Value = deposits + interest
+  // − withdrawals (no live price; interest is entered when credited).
+  deposits: defineTable({
+    kind: v.union(v.literal("fd"), v.literal("ppf"), v.literal("fund")),
+    name: v.string(),
+    institution: v.optional(v.string()),
+    ratePct: v.optional(v.number()),
+    maturityDate: v.optional(v.number()),
+    startDate: v.optional(v.number()),
+  }).index("by_kind", ["kind"]),
+
+  depositFlows: defineTable({
+    depositId: v.id("deposits"),
+    type: v.union(v.literal("deposit"), v.literal("withdrawal"), v.literal("interest")),
+    amount: v.number(),
+    date: v.number(),
+    note: v.optional(v.string()),
+  }).index("by_deposit", ["depositId"]),
 });

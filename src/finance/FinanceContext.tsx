@@ -14,6 +14,25 @@ import type { GenericId } from "convex/values";
 import type { TxnRow } from "./analytics";
 import type { StockRow, ExitRow, DividendRow, MFRow } from "./portfolio";
 
+export interface DepositRow {
+  _id: string;
+  kind: "fd" | "ppf" | "fund";
+  name: string;
+  institution?: string;
+  ratePct?: number;
+  maturityDate?: number;
+  startDate?: number;
+}
+
+export interface DepositFlowRow {
+  _id: string;
+  depositId: string;
+  type: "deposit" | "withdrawal" | "interest";
+  amount: number;
+  date: number;
+  note?: string;
+}
+
 export const INDEX_SYMBOLS = ["^NSEI", "^BSESN"];
 
 const CONVEX_URL: string =
@@ -56,6 +75,8 @@ interface FinanceCtx {
   exits: ExitRow[];
   dividends: DividendRow[];
   mutualFunds: MFRow[];
+  deposits: DepositRow[];
+  depositFlows: DepositFlowRow[];
   quotes: Record<string, number | null>;
   indices: Record<string, number | null>;
   quotesReady: boolean;
@@ -67,6 +88,8 @@ interface FinanceCtx {
   setCurrencyPref: (c: string) => void;
   theme: "light" | "dark";
   toggleTheme: () => void;
+  quickAddTray: boolean;
+  setQuickAddTray: (on: boolean) => void;
   // mutations
   addTxn: (
     data: {
@@ -89,17 +112,22 @@ interface FinanceCtx {
   deleteSub: (catId: string, index: number) => Promise<void>;
   saveBudget: (month: string, patch: { incomeGoal?: number; expenseBudget?: number; savingsGoal?: number }) => Promise<void>;
   addAccount: (a: { name: string; type: "savings" | "wallet" | "investment"; bankName?: string; openingBalance?: number }) => Promise<void>;
-  updateAccount: (id: string, patch: { name?: string; bankName?: string; openingBalance?: number }) => Promise<void>;
+  updateAccount: (id: string, patch: { name?: string; bankName?: string; openingBalance?: number; type?: "savings" | "wallet" | "investment" }) => Promise<void>;
   deleteAccount: (id: string) => Promise<void>;
-  addStock: (s: { symbol: string; name?: string; exchange?: "NSE" | "BSE"; quantity: number; buyPrice: number; buyDate: number; buyCharges?: number }) => Promise<void>;
+  addStock: (s: { symbol: string; name?: string; exchange?: "NSE" | "BSE"; quantity: number; bonuses?: number; buyPrice: number; buyDate: number; buyCharges?: number }) => Promise<void>;
   addExit: (e: { stockId: string; quantity: number; exitPrice: number; exitDate: number; charges?: number }) => Promise<void>;
   deleteExit: (exitId: string) => Promise<void>;
   addDividend: (d: { stockId: string; amount: number; date: number; note?: string }) => Promise<void>;
   deleteDividend: (id: string) => Promise<void>;
   deleteStock: (id: string) => Promise<void>;
+  updateStock: (id: string, patch: { bonuses?: number; buyDate?: number; quantity?: number; buyPrice?: number; name?: string; symbol?: string }) => Promise<void>;
   addMF: (f: { name: string; units: number; avgNav: number; navSymbol?: string; manualNav?: number; buyDate?: number }) => Promise<void>;
   updateMF: (id: string, patch: { name?: string; units?: number; avgNav?: number; navSymbol?: string; manualNav?: number }) => Promise<void>;
   deleteMF: (id: string) => Promise<void>;
+  addDeposit: (d: { kind: "fd" | "ppf" | "fund"; name: string; institution?: string; ratePct?: number; maturityDate?: number; startDate?: number }) => Promise<string>;
+  addDepositFlow: (f: { depositId: string; type: "deposit" | "withdrawal" | "interest"; amount: number; date: number; note?: string }) => Promise<void>;
+  removeDepositFlow: (flowId: string) => Promise<void>;
+  deleteDeposit: (id: string) => Promise<void>;
 }
 
 const Ctx = createContext<FinanceCtx | null>(null);
@@ -136,13 +164,16 @@ function Inner({ children }: { children: React.ReactNode }) {
   const exitsRaw = useQuery(api.stocks.listExits, {});
   const dividendsRaw = useQuery(api.stocks.listDividends, {});
   const mutualFundsRaw = useQuery(api.mutualFunds.list);
+  const depositsRaw = useQuery(api.deposits.list);
+  const depositFlowsRaw = useQuery(api.deposits.listFlows, {});
 
   const ready =
     categoriesRaw !== undefined &&
     transactionsRaw !== undefined &&
     budgetsRaw !== undefined &&
     accountsRaw !== undefined &&
-    stocksRaw !== undefined;
+    stocksRaw !== undefined &&
+    depositsRaw !== undefined;
 
   const categories = categoriesRaw ?? [];
   const transactions = (transactionsRaw ?? []) as unknown as TxnRow[];
@@ -152,6 +183,8 @@ function Inner({ children }: { children: React.ReactNode }) {
   const exits = (exitsRaw ?? []) as unknown as ExitRow[];
   const dividends = (dividendsRaw ?? []) as unknown as DividendRow[];
   const mutualFunds = (mutualFundsRaw ?? []) as unknown as MFRow[];
+  const deposits = (depositsRaw ?? []) as unknown as DepositRow[];
+  const depositFlows = (depositFlowsRaw ?? []) as unknown as DepositFlowRow[];
 
   const mSeedDefaults = useMutation(api.categories.seedDefaults);
   useEffect(() => {
@@ -163,6 +196,7 @@ function Inner({ children }: { children: React.ReactNode }) {
 
   const [currency, setCurrencyPref] = usePref("currency", "INR");
   const [theme, setTheme] = usePref<"light" | "dark">("theme", "light");
+  const [quickAddTray, setQuickAddTrayPref] = usePref("quickAddTray", true);
   const [tick, setTick] = useState(0);
 
   useEffect(() => setCurrency(currency), [currency]);
@@ -246,9 +280,14 @@ function Inner({ children }: { children: React.ReactNode }) {
   const mAddDividend = useMutation(api.stocks.addDividend);
   const mDeleteDividend = useMutation(api.stocks.removeDividend);
   const mDeleteStock = useMutation(api.stocks.remove);
+  const mUpdateStock = useMutation(api.stocks.update);
   const mAddMF = useMutation(api.mutualFunds.add);
   const mUpdateMF = useMutation(api.mutualFunds.update);
   const mDeleteMF = useMutation(api.mutualFunds.remove);
+  const mAddDeposit = useMutation(api.deposits.add);
+  const mAddDepositFlow = useMutation(api.deposits.addFlow);
+  const mRemoveDepositFlow = useMutation(api.deposits.removeFlow);
+  const mDeleteDeposit = useMutation(api.deposits.remove);
   const convex = useConvex();
 
   const addTxn: FinanceCtx["addTxn"] = async (data, billFile) => {
@@ -281,6 +320,8 @@ function Inner({ children }: { children: React.ReactNode }) {
     exits,
     dividends,
     mutualFunds,
+    deposits,
+    depositFlows,
     quotes,
     indices,
     quotesReady,
@@ -291,6 +332,20 @@ function Inner({ children }: { children: React.ReactNode }) {
     setCurrencyPref,
     theme,
     toggleTheme: () => setTheme(theme === "light" ? "dark" : "light"),
+    quickAddTray,
+    setQuickAddTray: async (on: boolean) => {
+      setQuickAddTrayPref(on);
+      try {
+        const cap = (window as unknown as {
+          Capacitor?: { isNativePlatform?: () => boolean; Plugins?: { QuickAdd?: { setEnabled: (o: { enabled: boolean }) => Promise<unknown> } } };
+        }).Capacitor;
+        if (cap?.isNativePlatform?.() && cap.Plugins?.QuickAdd) {
+          await cap.Plugins.QuickAdd.setEnabled({ enabled: on });
+        }
+      } catch {
+        /* plugin only exists in the Android build */
+      }
+    },
     addTxn,
     updateTxn: async (id, patch) => {
       await mUpdateTxn({
@@ -352,6 +407,9 @@ function Inner({ children }: { children: React.ReactNode }) {
     deleteStock: async (id) => {
       await mDeleteStock({ id: id as Id<"stocks"> });
     },
+    updateStock: async (id, patch) => {
+      await mUpdateStock({ id: id as Id<"stocks">, ...patch });
+    },
     addMF: async (f) => {
       await mAddMF(f);
     },
@@ -360,6 +418,21 @@ function Inner({ children }: { children: React.ReactNode }) {
     },
     deleteMF: async (id) => {
       await mDeleteMF({ id: id as Id<"mutualFunds"> });
+    },
+    addDeposit: async (d) => {
+      return (await mAddDeposit(d)) as unknown as string;
+    },
+    addDepositFlow: async (f) => {
+      await mAddDepositFlow({
+        ...f,
+        depositId: f.depositId as Id<"deposits">,
+      });
+    },
+    removeDepositFlow: async (flowId) => {
+      await mRemoveDepositFlow({ flowId: flowId as Id<"depositFlows"> });
+    },
+    deleteDeposit: async (id) => {
+      await mDeleteDeposit({ id: id as Id<"deposits"> });
     },
   };
 

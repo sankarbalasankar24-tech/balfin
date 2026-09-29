@@ -27,6 +27,7 @@ export const add = mutation({
     name: v.optional(v.string()),
     exchange: v.optional(v.union(v.literal("NSE"), v.literal("BSE"))),
     quantity: v.number(),
+    bonuses: v.optional(v.number()),
     buyPrice: v.number(),
     buyDate: v.number(),
     buyCharges: v.optional(v.number()),
@@ -42,6 +43,7 @@ export const add = mutation({
       name: args.name?.trim() || undefined,
       exchange,
       quantity: args.quantity,
+      bonuses: args.bonuses ?? 0,
       buyPrice: args.buyPrice,
       buyDate: args.buyDate,
       buyCharges: args.buyCharges ?? 0,
@@ -56,6 +58,7 @@ export const update = mutation({
     symbol: v.optional(v.string()),
     name: v.optional(v.string()),
     quantity: v.optional(v.number()),
+    bonuses: v.optional(v.number()),
     buyPrice: v.optional(v.number()),
     buyDate: v.optional(v.number()),
   },
@@ -64,6 +67,7 @@ export const update = mutation({
     if (patch.symbol !== undefined) clean.symbol = patch.symbol.trim().toUpperCase();
     if (patch.name !== undefined) clean.name = patch.name.trim() || "";
     if (patch.quantity !== undefined) clean.quantity = patch.quantity;
+    if (patch.bonuses !== undefined) clean.bonuses = patch.bonuses;
     if (patch.buyPrice !== undefined) clean.buyPrice = patch.buyPrice;
     if (patch.buyDate !== undefined) clean.buyDate = patch.buyDate;
     if (Object.keys(clean).length) await ctx.db.patch(id, clean);
@@ -86,7 +90,7 @@ export const addExit = mutation({
       .withIndex("by_stock", (q) => q.eq("stockId", stockId))
       .collect();
     const exitedQty = exits.reduce((sum, e) => sum + e.quantity, 0);
-    const remaining = stock.quantity - exitedQty;
+    const remaining = stock.quantity + (stock.bonuses ?? 0) - exitedQty;
     if (quantity <= 0) throw new Error("Exit quantity must be positive");
     if (quantity > remaining)
       throw new Error(`Only ${remaining} unit(s) remaining to exit`);
@@ -115,7 +119,7 @@ export const removeExit = mutation({
       .withIndex("by_stock", (q) => q.eq("stockId", exit.stockId))
       .collect();
     const exitedQty = exits.reduce((sum, e) => sum + e.quantity, 0);
-    await ctx.db.patch(exit.stockId, { closed: exitedQty >= stock.quantity });
+    await ctx.db.patch(exit.stockId, { closed: exitedQty >= stock.quantity + (stock.bonuses ?? 0) });
   },
 });
 

@@ -15,13 +15,15 @@ createRoot(document.getElementById("root")!).render(
     <HashRouter>
       <FinanceProvider>
         <Routes>
-          <Route path="/" element={<Landing />} />
+          {/* Open straight into the app — landing is optional at #/intro */}
+          <Route path="/" element={<Navigate to="/app" replace />} />
+          <Route path="/intro" element={<Landing />} />
           <Route path="/app" element={<Overview />} />
           <Route path="/app/ledger" element={<Ledger />} />
           <Route path="/app/invest" element={<Investments />} />
           <Route path="/app/budgets" element={<Budgets />} />
           <Route path="/app/manage" element={<Manage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </FinanceProvider>
     </HashRouter>

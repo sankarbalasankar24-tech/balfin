@@ -20,7 +20,7 @@ const PERIODS: Array<{ key: Period; label: string }> = [
 export default function Overview() {
   const {
     ready, transactions, categories, budgets, accounts, stocks, exits, dividends,
-    mutualFunds, quotes, catName, accountName,
+    mutualFunds, deposits, depositFlows, quotes, catName, accountName,
   } = useFinance();
   const { openEntry } = useEntryEdit();
   const [month, setMonth] = useState(monthKey(Date.now()));
@@ -42,10 +42,7 @@ export default function Overview() {
     [stocks, exits, dividends, quotes]
   );
   const portfolio = useMemo(() => portfolioTotals(positions), [positions]);
-  const combinedPL =
-    portfolio.unrealizedPL === null && portfolio.realizedPL === 0
-      ? null
-      : (portfolio.unrealizedPL ?? 0) + portfolio.realizedPL;
+  const combinedPL = portfolio.totalPL;
   const ltCombined =
     portfolio.longTermPL === null && portfolio.realizedPL === 0
       ? null
@@ -61,9 +58,12 @@ export default function Overview() {
     return { invested, value };
   }, [mutualFunds, quotes]);
 
-  const accountBalances = useMemo(() => {
+  // Liquid = savings accounts + wallets only (investment-type accounts are
+  // counted in the investments header instead).
+  const liquidBalances = useMemo(() => {
     let bal = 0;
     for (const a of accounts) {
+      if (a.type === "investment") continue;
       let flow = 0;
       for (const t of transactions) if (t.accountId === a._id) flow += t.kind === "income" ? t.amount : -t.amount;
       bal += a.openingBalance + flow;
@@ -71,9 +71,17 @@ export default function Overview() {
     return bal;
   }, [accounts, transactions]);
 
-  const allTimeIncome = transactions.filter((t) => t.kind === "income").reduce((s, t) => s + t.amount, 0);
-  const totalWorth = accountBalances + portfolio.currentValue + mfTotals.value;
-  const investmentsValue = portfolio.currentValue + mfTotals.value;
+  const depositsValue = useMemo(() => {
+    let v = 0;
+    for (const f of depositFlows) v += f.type === "withdrawal" ? -f.amount : f.amount;
+    return v;
+  }, [depositFlows]);
+
+  const stockLT = portfolio.longTermValue;
+  const stockST = portfolio.shortTermValue;
+  const netStockPL = portfolio.totalPL;
+  const investmentsValue = portfolio.currentValue + mfTotals.value + depositsValue;
+  const totalWorth = liquidBalances + investmentsValue;
 
   const budget = budgets.find((b) => b.month === month);
   const incomeGoal = budget?.incomeGoal ?? 0;
@@ -154,20 +162,52 @@ export default function Overview() {
         )}
       </section>
 
-      {/* all-time snapshot */}
+      {/* all-time position — net sum of everything, valued today */}
       <section className="card mt-3 p-5">
-        <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">All-time position</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">All-time position — net worth today</p>
         <p className="mt-1 font-display text-3xl font-semibold tabular">{m(fmtMoney(totalWorth, { compact: true }))}</p>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-xl bg-surface-2 p-3">
-            <div className="flex items-center gap-1.5 text-xs text-ink-soft"><Wallet size={13} /> Liquid funds</div>
-            <p className="mt-1 text-lg font-semibold tabular">{m(fmtMoney(accountBalances, { compact: true }))}</p>
-            <p className="text-[11px] text-ink-faint">{allTimeIncome > 0 ? `Lifetime in ${fmtMoney(allTimeIncome, { compact: true })}` : "Accounts + cash flow"}</p>
+        <p className="mt-0.5 text-[11px] text-ink-faint">accounts + wallets + stocks at market price + funds &amp; deposits, profits and losses included</p>
+
+        <div className="mt-4">
+          <div className="flex items-center justify-between">
+            <p className="flex items-center gap-1.5 text-sm font-semibold"><Wallet size={14} className="text-primary" /> Liquid funds</p>
+            <p className="text-base font-semibold tabular">{m(fmtMoney(liquidBalances, { compact: true }))}</p>
           </div>
-          <div className="rounded-xl bg-surface-2 p-3">
-            <div className="flex items-center gap-1.5 text-xs text-ink-soft"><LineChart size={13} /> Investments</div>
-            <p className="mt-1 text-lg font-semibold tabular">{m(fmtMoney(investmentsValue, { compact: true }))}</p>
-            <p className="text-[11px] text-ink-faint">Stocks + funds at live prices</p>
+          <p className="mt-0.5 text-[11px] text-ink-faint">Savings accounts + wallets only</p>
+        </div>
+
+        <div className="mt-3 border-t border-line/70 pt-3">
+          <div className="flex items-center justify-between">
+            <p className="flex items-center gap-1.5 text-sm font-semibold"><LineChart size={14} className="text-primary" /> Investments</p>
+            <p className="text-base font-semibold tabular">{m(fmtMoney(investmentsValue, { compact: true }))}</p>
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            <div className="rounded-xl bg-surface-2 p-2.5 text-center">
+              <p className="text-[10px] text-ink-faint">Stocks · long term</p>
+              <p className="text-xs font-semibold tabular">{m(fmtMoney(stockLT, { compact: true }))}</p>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-2.5 text-center">
+              <p className="text-[10px] text-ink-faint">Stocks · short term</p>
+              <p className="text-xs font-semibold tabular">{m(fmtMoney(stockST, { compact: true }))}</p>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-2.5 text-center">
+              <p className="text-[10px] text-ink-faint">Stock P&amp;L (all)</p>
+              <p className={`text-xs font-semibold tabular ${(netStockPL ?? 0) >= 0 ? "text-income" : "text-expense"}`}>
+                {netStockPL === null ? "—" : m(fmtMoney(netStockPL, { sign: true, compact: true }))}
+              </p>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-2.5 text-center">
+              <p className="text-[10px] text-ink-faint">Mutual funds</p>
+              <p className="text-xs font-semibold tabular">{m(fmtMoney(mfTotals.value, { compact: true }))}</p>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-2.5 text-center">
+              <p className="text-[10px] text-ink-faint">FD · PPF · deposits</p>
+              <p className="text-xs font-semibold tabular">{m(fmtMoney(depositsValue, { compact: true }))}</p>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-2.5 text-center">
+              <p className="text-[10px] text-ink-faint">Total invested</p>
+              <p className="text-xs font-semibold tabular">{m(fmtMoney(portfolio.investedAllTime, { compact: true }))}</p>
+            </div>
           </div>
         </div>
       </section>
@@ -184,19 +224,21 @@ export default function Overview() {
         <div className="mt-3 grid grid-cols-2 gap-2">
           <div className="rounded-xl bg-surface-2 p-2.5 text-center">
             <p className="text-[11px] text-ink-faint">Long term (≥ 1 yr)</p>
-            <p className={`text-sm font-semibold tabular ${(portfolio.longTermPL ?? 0) >= 0 ? "text-income" : "text-expense"}`}>
-              {portfolio.longTermPL === null ? "—" : fmtMoney(portfolio.longTermPL, { sign: true, compact: true })}
+            <p className={`text-sm font-semibold tabular ${(portfolio.ltCombinedPL ?? 0) >= 0 ? "text-income" : "text-expense"}`}>
+              {portfolio.ltCombinedPL === null ? "—" : fmtMoney(portfolio.ltCombinedPL, { sign: true, compact: true })}
             </p>
-            <p className={`text-[11px] tabular ${ltCombined !== null && ltCombined >= 0 ? "text-income" : "text-expense"}`}>
-              incl. realized {ltCombined === null ? "—" : fmtMoney(ltCombined, { sign: true, compact: true })}
+            <p className={`text-[11px] tabular ${(portfolio.longTermPL ?? 0) >= 0 ? "text-income" : "text-expense"}`}>
+              open {portfolio.longTermPL === null ? "—" : fmtMoney(portfolio.longTermPL, { sign: true, compact: true })}
             </p>
           </div>
           <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-            <p className="text-[11px] text-ink-faint">Short term</p>
-            <p className={`text-sm font-semibold tabular ${(portfolio.shortTermPL ?? 0) >= 0 ? "text-income" : "text-expense"}`}>
-              {portfolio.shortTermPL === null ? "—" : fmtMoney(portfolio.shortTermPL, { sign: true, compact: true })}
+            <p className="text-[11px] text-ink-faint">Short term (&lt; 1 yr)</p>
+            <p className={`text-sm font-semibold tabular ${(portfolio.stCombinedPL ?? 0) >= 0 ? "text-income" : "text-expense"}`}>
+              {portfolio.stCombinedPL === null ? "—" : fmtMoney(portfolio.stCombinedPL, { sign: true, compact: true })}
             </p>
-            <p className="text-[11px] text-ink-faint">held &lt; 365 days</p>
+            <p className={`text-[11px] tabular ${(portfolio.shortTermPL ?? 0) >= 0 ? "text-income" : "text-expense"}`}>
+              open {portfolio.shortTermPL === null ? "—" : fmtMoney(portfolio.shortTermPL, { sign: true, compact: true })}
+            </p>
           </div>
         </div>
       </section>
