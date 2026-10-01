@@ -35,6 +35,16 @@ export interface DepositFlowRow {
 
 export const INDEX_SYMBOLS = ["^NSEI", "^BSESN"];
 
+export interface SheetSyncCfg {
+  endpoint?: string;
+  lastStatus?: string;
+  lastError?: string;
+  lastPushedAt?: number;
+}
+
+/** Choosable gesture that opens the quick-entry popup (Android). */
+export type QuickAddGesture = "none" | "bubble" | "shake";
+
 const CONVEX_URL: string =
   (import.meta.env.VITE_CONVEX_URL as string | undefined) ?? "";
 
@@ -88,8 +98,13 @@ interface FinanceCtx {
   setCurrencyPref: (c: string) => void;
   theme: "light" | "dark";
   toggleTheme: () => void;
-  quickAddTray: boolean;
-  setQuickAddTray: (on: boolean) => void;
+  quickAddGesture: QuickAddGesture;
+  setQuickAddGesture: (g: QuickAddGesture) => void;
+  // Google Sheets auto-sync
+  sheetSync: SheetSyncCfg | null;
+  setSheetEndpoint: (url: string) => Promise<void>;
+  syncSheets: () => Promise<"synced" | "error">;
+  sheetsSyncing: boolean;
   // mutations
   addTxn: (
     data: {
@@ -110,7 +125,7 @@ interface FinanceCtx {
   deleteCategory: (id: string) => Promise<void>;
   addSub: (catId: string, name: string) => Promise<void>;
   deleteSub: (catId: string, index: number) => Promise<void>;
-  saveBudget: (month: string, patch: { incomeGoal?: number; expenseBudget?: number; savingsGoal?: number }) => Promise<void>;
+  saveBudget: (month: string, patch: { incomeGoal?: number; expenseBudget?: number; savingsGoal?: number; categoryBudgets?: Array<{ categoryId: string; amount: number }> }) => Promise<void>;
   addAccount: (a: { name: string; type: "savings" | "wallet" | "investment"; bankName?: string; openingBalance?: number }) => Promise<void>;
   updateAccount: (id: string, patch: { name?: string; bankName?: string; openingBalance?: number; type?: "savings" | "wallet" | "investment" }) => Promise<void>;
   deleteAccount: (id: string) => Promise<void>;
@@ -196,12 +211,27 @@ function Inner({ children }: { children: React.ReactNode }) {
 
   const [currency, setCurrencyPref] = usePref("currency", "INR");
   const [theme, setTheme] = usePref<"light" | "dark">("theme", "light");
-  const [quickAddTray, setQuickAddTrayPref] = usePref("quickAddTray", true);
+  const [quickAddGesture, setQuickAddGesturePref] = usePref<QuickAddGesture>("quickAddGesture", "bubble");
+
+  // push gesture choice into the Android layer (bubble / shake service)
+  useEffect(() => {
+    try {
+      const cap = (window as unknown as {
+        Capacitor?: { isNativePlatform?: () => boolean; Plugins?: { QuickAdd?: { setGesture: (o: { gesture: string }) => Promise<unknown> } } };
+      }).Capacitor;
+      if (cap?.isNativePlatform?.() && cap.Plugins?.QuickAdd) {
+        cap.Plugins.QuickAdd.setGesture({ gesture: quickAddGesture });
+      }
+    } catch {
+      /* plugin only exists in the Android build */
+    }
+  }, [quickAddGesture]);
   const [tick, setTick] = useState(0);
 
   useEffect(() => setCurrency(currency), [currency]);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.classList.toggle("light", theme === "light");
   }, [theme]);
 
   const fetchQuotes = useAction(api.market.quotes);
@@ -284,11 +314,27 @@ function Inner({ children }: { children: React.ReactNode }) {
   const mAddMF = useMutation(api.mutualFunds.add);
   const mUpdateMF = useMutation(api.mutualFunds.update);
   const mDeleteMF = useMutation(api.mutualFunds.remove);
+  const sheetCfgRaw = useQuery(api.sheets.getConfig);
+  const sheetCfg = sheetCfgRaw as unknown as SheetSyncCfg | undefined;
+  const mSetSheetEndpoint = useMutation(api.sheets.setEndpoint);
+  const aSyncSheets = useAction(api.sheets.syncNow);
+  const [sheetsSyncing, setSheetsSyncing] = useState(false);
+
   const mAddDeposit = useMutation(api.deposits.add);
   const mAddDepositFlow = useMutation(api.deposits.addFlow);
   const mRemoveDepositFlow = useMutation(api.deposits.removeFlow);
   const mDeleteDeposit = useMutation(api.deposits.remove);
   const convex = useConvex();
+
+  // Auto-sync every new entry to the linked Google Sheet (fire-and-forget;
+  // failures are recorded in sheetSync.lastError and surfaced in Manage).
+  const syncAfterChange = useCallback(() => {
+    if (!sheetCfg?.endpoint) return;
+    aSyncSheets({}).catch(() => {
+      /* status recorded server-side */
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetCfg?.endpoint, aSyncSheets]);
 
   const addTxn: FinanceCtx["addTxn"] = async (data, billFile) => {
     let billImageId: GenericId<"_storage"> | undefined;
@@ -307,6 +353,7 @@ function Inner({ children }: { children: React.ReactNode }) {
       }
     }
     await mAddTxn({ ...data, billImageId } as Parameters<typeof mAddTxn>[0]);
+    syncAfterChange();
   };
 
   const value: FinanceCtx = {
@@ -332,20 +379,24 @@ function Inner({ children }: { children: React.ReactNode }) {
     setCurrencyPref,
     theme,
     toggleTheme: () => setTheme(theme === "light" ? "dark" : "light"),
-    quickAddTray,
-    setQuickAddTray: async (on: boolean) => {
-      setQuickAddTrayPref(on);
+    quickAddGesture,
+    setQuickAddGesture: setQuickAddGesturePref,
+    sheetSync: sheetCfg ?? null,
+    setSheetEndpoint: async (url: string) => {
+      await mSetSheetEndpoint({ endpoint: url });
+    },
+    syncSheets: async () => {
+      setSheetsSyncing(true);
       try {
-        const cap = (window as unknown as {
-          Capacitor?: { isNativePlatform?: () => boolean; Plugins?: { QuickAdd?: { setEnabled: (o: { enabled: boolean }) => Promise<unknown> } } };
-        }).Capacitor;
-        if (cap?.isNativePlatform?.() && cap.Plugins?.QuickAdd) {
-          await cap.Plugins.QuickAdd.setEnabled({ enabled: on });
-        }
+        await aSyncSheets({});
+        return "synced";
       } catch {
-        /* plugin only exists in the Android build */
+        return "error";
+      } finally {
+        setSheetsSyncing(false);
       }
     },
+    sheetsSyncing,
     addTxn,
     updateTxn: async (id, patch) => {
       await mUpdateTxn({
@@ -372,7 +423,14 @@ function Inner({ children }: { children: React.ReactNode }) {
       await mDeleteSub({ id: catId as Id<"categories">, index });
     },
     saveBudget: async (month, patch) => {
-      await mSaveBudget({ month, ...patch });
+      await mSaveBudget({
+        month,
+        ...patch,
+        categoryBudgets: patch.categoryBudgets?.map((cb) => ({
+          ...cb,
+          categoryId: cb.categoryId as Id<"categories">,
+        })),
+      });
     },
     addAccount: async (a) => {
       await mAddAccount(a);
@@ -385,6 +443,7 @@ function Inner({ children }: { children: React.ReactNode }) {
     },
     addStock: async (s) => {
       await mAddStock(s);
+      syncAfterChange();
     },
     addExit: async (e) => {
       await mAddExit({
@@ -394,12 +453,14 @@ function Inner({ children }: { children: React.ReactNode }) {
         exitDate: e.exitDate,
         charges: e.charges,
       });
+      syncAfterChange();
     },
     deleteExit: async (exitId) => {
       await mDeleteExit({ exitId: exitId as Id<"stockExits"> });
     },
     addDividend: async (d) => {
       await mAddDividend({ ...d, stockId: d.stockId as Id<"stocks"> });
+      syncAfterChange();
     },
     deleteDividend: async (id) => {
       await mDeleteDividend({ dividendId: id as Id<"dividends"> });
@@ -412,6 +473,7 @@ function Inner({ children }: { children: React.ReactNode }) {
     },
     addMF: async (f) => {
       await mAddMF(f);
+      syncAfterChange();
     },
     updateMF: async (id, patch) => {
       await mUpdateMF({ id: id as Id<"mutualFunds">, ...patch });
@@ -420,13 +482,16 @@ function Inner({ children }: { children: React.ReactNode }) {
       await mDeleteMF({ id: id as Id<"mutualFunds"> });
     },
     addDeposit: async (d) => {
-      return (await mAddDeposit(d)) as unknown as string;
+      const id = (await mAddDeposit(d)) as unknown as string;
+      syncAfterChange();
+      return id;
     },
     addDepositFlow: async (f) => {
       await mAddDepositFlow({
         ...f,
         depositId: f.depositId as Id<"deposits">,
       });
+      syncAfterChange();
     },
     removeDepositFlow: async (flowId) => {
       await mRemoveDepositFlow({ flowId: flowId as Id<"depositFlows"> });

@@ -15,6 +15,7 @@ import type * as defaults from "../defaults.js";
 import type * as deposits from "../deposits.js";
 import type * as market from "../market.js";
 import type * as mutualFunds from "../mutualFunds.js";
+import type * as sheets from "../sheets.js";
 import type * as stocks from "../stocks.js";
 import type * as transactions from "../transactions.js";
 
@@ -32,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   deposits: typeof deposits;
   market: typeof market;
   mutualFunds: typeof mutualFunds;
+  sheets: typeof sheets;
   stocks: typeof stocks;
   transactions: typeof transactions;
 }>;

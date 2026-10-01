@@ -1,55 +1,92 @@
 @import "tailwindcss";
 
-/* Dark mode is class-driven (html.dark), not prefers-color-scheme —
-   without this line Tailwind v4's dark: utilities follow the OS instead
-   of the in-app toggle. */
+/* Dark mode is class-driven (html.dark) — the app is dark-first by design
+   (deep navy canvas), but a light palette is provided via token overrides. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: "Nunito", ui-rounded, system-ui, sans-serif;
-  --font-display: "Nunito", ui-rounded, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-rounded, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", ui-rounded, system-ui, sans-serif;
 
-  --color-primary: oklch(0.45 0.09 205);
-  --color-primary-dark: oklch(0.36 0.08 205);
-  --color-primary-soft: oklch(0.93 0.03 205);
-  --color-accent: oklch(0.72 0.13 65);
+  /* Vibrant Fintech Fluidity — exact design tokens */
+  --color-background: #0b1326;
+  --color-surface-low: #131b2e;
+  --color-surface: #0b1326;
+  --color-surface-2: #171f33;
+  --color-card: #171f33;
+  --color-card-high: #222a3d;
+  --color-card-highest: #2d3449;
+  --color-surface-bright: #31394d;
+  --color-surface-lowest: #060e20;
 
-  --color-expense: oklch(0.58 0.19 25);
-  --color-income: oklch(0.62 0.14 155);
+  --color-ink: #dae2fd;
+  --color-ink-soft: #bbcabf;
+  --color-ink-faint: #85948a;
+  --color-line: #3c4a41;
+  --color-outline: #3c4a41;
 
-  --color-surface: oklch(0.985 0.002 90);
-  --color-surface-2: oklch(0.96 0.004 90);
-  --color-card: oklch(1 0 0);
-  --color-line: oklch(0.91 0.006 90);
-  --color-ink: oklch(0.24 0.01 90);
-  --color-ink-soft: oklch(0.5 0.015 90);
-  --color-ink-faint: oklch(0.65 0.012 90);
+  --color-primary: #00c888;
+  --color-primary-bright: #42e5a2;
+  --color-primary-soft: #003823;
+  --color-primary-fixed: #60fdb8;
+
+  --color-secondary: #c6bfff;
+  --color-secondary-deep: #4029ba;
+  --color-secondary-soft: #160066;
+
+  --color-tertiary: #ffbab7;
+  --color-tertiary-deep: #ff908d;
+  --color-tertiary-soft: #821920;
+
+  --color-error: #ffb4ab;
+  --color-error-deep: #93000a;
+
+  /* semantic (legacy token names kept so existing classes keep working) */
+  --color-income: #42e5a2;
+  --color-expense: #ff908d;
+  --color-accent: #c6bfff;
+
+  --radius-pill: 9999px;
+  --radius-lg: 2rem;
+  --radius-xl: 3rem;
 }
 
-/* Dark palette — the in-app toggle adds .dark to <html>; overriding the
-   same token names here flips every bg-card / text-ink / bg-surface-2
-   across the app automatically. */
-.dark {
-  --color-surface: oklch(0.17 0.01 250);
-  --color-surface-2: oklch(0.22 0.012 250);
-  --color-card: oklch(0.21 0.012 250);
-  --color-line: oklch(0.31 0.015 250);
-  --color-ink: oklch(0.93 0.005 250);
-  --color-ink-soft: oklch(0.72 0.01 250);
-  --color-ink-faint: oklch(0.56 0.012 250);
-  --color-primary-soft: oklch(0.3 0.04 205);
+/* Light mode — soft neutral daylight counterpart of the navy canvas.
+   .light on <html> (theme toggle flips between .dark / .light). */
+.light {
+  --color-background: #f4f6fb;
+  --color-surface: #f4f6fb;
+  --color-surface-low: #ffffff;
+  --color-surface-2: #eef1f8;
+  --color-card: #ffffff;
+  --color-card-high: #e9edf6;
+  --color-card-highest: #dfe4ef;
+  --color-surface-bright: #ffffff;
+  --color-surface-lowest: #e7ebf4;
+
+  --color-ink: #1b2437;
+  --color-ink-soft: #5a667f;
+  --color-ink-faint: #8b95a9;
+  --color-line: #dfe3ee;
+  --color-outline: #c3cadb;
+
+  --color-primary-soft: #d9f6ea;
+  --color-income: #0a9d69;
+  --color-expense: #e35d5a;
 }
 
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
-    color-scheme: light;
   }
   .dark {
     color-scheme: dark;
   }
+  .light {
+    color-scheme: light;
+  }
   body {
-    @apply bg-surface text-ink font-sans antialiased;
+    @apply bg-background text-ink font-sans antialiased;
     padding-bottom: env(safe-area-inset-bottom);
   }
   * {
@@ -63,10 +100,14 @@
 }
 
 @utility card {
-  @apply rounded-2xl bg-card border border-line/70;
-  box-shadow:
-    0 1px 2px oklch(0.24 0.01 90 / 0.04),
-    0 4px 16px oklch(0.24 0.01 90 / 0.05);
+  @apply rounded-2xl bg-card;
+  border: 1px solid rgb(255 255 255 / 0.05);
+  box-shadow: 0 4px 16px -2px rgb(0 0 0 / 0.35);
+}
+.light .card,
+.light[class*="card"] {
+  border-color: rgb(15 23 42 / 0.06);
+  box-shadow: 0 4px 16px -2px rgb(15 23 42 / 0.08);
 }
 
 @utility tabular {
@@ -86,4 +127,12 @@
 }
 .animate-fade {
   animation: fade-in 0.2s ease-out;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

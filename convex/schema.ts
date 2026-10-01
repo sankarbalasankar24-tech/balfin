@@ -100,4 +100,13 @@ export default defineSchema({
     date: v.number(),
     note: v.optional(v.string()),
   }).index("by_deposit", ["depositId"]),
+
+  // Google Sheets auto-sync — single row holding the Apps Script web-app
+  // endpoint of the user's linked sheet plus last sync status.
+  sheetSync: defineTable({
+    endpoint: v.optional(v.string()),
+    lastPushedAt: v.optional(v.number()),
+    lastStatus: v.optional(v.string()), // "pending" | "synced" | "error"
+    lastError: v.optional(v.string()),
+  }),
 });

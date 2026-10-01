@@ -1,15 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { useFinance } from "./FinanceContext";
-import { CatIcon } from "./icons";
-import { fmtMoney } from "./format";
-import { Home, PieChart, List, TrendingUp, Target, Settings, Plus } from "lucide-react";
-import EntrySheet from "./EntrySheet";
+import { NavLink as RRNavLink } from "react-router-dom";
+import { Home, PieChart, List, TrendingUp, Settings, Plus } from "lucide-react";
+import QuickEntry from "./QuickEntry";
 
-const TABS: Array<{ to: string; label: string; icon: React.ComponentType<{ size?: number }>; end?: boolean }> = [
+const TABS: Array<{ to: string; label: string; icon: React.ComponentType<{ size?: number; className?: string }>; end?: boolean }> = [
   { to: "/app", label: "Overview", icon: Home, end: true },
   { to: "/app/ledger", label: "Ledger", icon: List },
   { to: "/app/invest", label: "Invest", icon: TrendingUp },
-  { to: "/app/budgets", label: "Budgets", icon: Target },
+  { to: "/app/budgets", label: "Budgets", icon: PieChart },
   { to: "/app/manage", label: "Manage", icon: Settings },
 ];
 
@@ -32,7 +30,7 @@ export default function AppShell({
   const openEntryWithKind = (kind: "expense" | "income") =>
     setEntry({ open: true, editId: null, initialKind: kind });
 
-  // Android widget / shortcut deep links: balfin://quick-add?kind=income
+  // Deep links (home-screen shortcuts): balfin://quick-add?kind=income
   useEffect(() => {
     const handler = () => {
       const h = window.location.hash;
@@ -53,23 +51,24 @@ export default function AppShell({
   return (
     <EntryEditContext.Provider value={{ openEntry, openEntryWithKind }}>
       <div className="mx-auto flex min-h-screen w-full max-w-lg flex-col">
-        <header className="sticky top-0 z-30 bg-surface/90 px-4 pb-3 pt-4 backdrop-blur">
-          <h1 className="font-display text-2xl font-semibold leading-tight">{title}</h1>
-          {subtitle && <p className="text-sm text-ink-soft">{subtitle}</p>}
+        <header className="sticky top-0 z-30 bg-background/90 px-4 pb-3 pt-4 backdrop-blur">
+          <h1 className="text-xl font-extrabold tracking-tight">{title}</h1>
+          {subtitle && <p className="text-xs text-ink-soft">{subtitle}</p>}
         </header>
         <main className="flex-1 px-4 pb-28">{children}</main>
 
-        {/* FAB */}
+        {/* Quick Log pill — Level 3 elevation with emerald glow */}
         <button
           onClick={() => openEntry()}
-          aria-label="Quick add"
-          className="fixed bottom-24 right-1/2 z-40 flex h-14 w-14 translate-x-[max(50%,calc(50%-20rem))] items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/30 active:scale-95 transition"
+          aria-label="Quick log"
+          className="fixed bottom-24 right-1/2 z-40 flex h-12 translate-x-[max(50%,calc(50%-20rem))] items-center gap-1.5 rounded-full border border-primary/20 bg-primary px-5 text-sm font-bold text-[#003823] shadow-[0_12px_32px_-4px_rgba(0,200,136,0.35)] transition active:scale-95"
         >
-          <Plus size={26} />
+          <Plus size={18} strokeWidth={2.5} />
+          Quick Log
         </button>
 
         {/* bottom nav */}
-        <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-lg -translate-x-1/2 border-t border-line bg-card/95 px-2 pb-[max(env(safe-area-inset-bottom),0.4rem)] pt-1.5 backdrop-blur">
+        <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-lg -translate-x-1/2 rounded-t-2xl bg-surface-low px-2 pb-[max(env(safe-area-inset-bottom),0.4rem)] pt-1.5 shadow-[0_8px_24px_-4px_rgba(0,0,0,0.45)]">
           <div className="grid grid-cols-5">
             {TABS.map(({ to, label, icon: Icon, end }) => {
               return (
@@ -81,7 +80,7 @@ export default function AppShell({
           </div>
         </nav>
 
-        <EntrySheet
+        <QuickEntry
           open={entry.open}
           editId={entry.editId}
           initialKind={entry.initialKind}
@@ -91,9 +90,6 @@ export default function AppShell({
     </EntryEditContext.Provider>
   );
 }
-
-// Minimal NavLink + context to avoid extra imports elsewhere
-import { NavLink as RRNavLink, useLocation } from "react-router-dom";
 
 function NavLink({
   to,
@@ -111,8 +107,10 @@ function NavLink({
       to={to}
       end={end}
       className={({ isActive }) =>
-        `flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[10px] font-medium transition ${
-          isActive ? "text-primary" : "text-ink-faint"
+        `mx-auto flex w-[4.2rem] flex-col items-center justify-center gap-0.5 rounded-full py-1 text-[10px] font-semibold transition active:scale-95 ${
+          isActive
+            ? "bg-primary text-[#003823]"
+            : "text-ink-faint"
         }`
       }
     >

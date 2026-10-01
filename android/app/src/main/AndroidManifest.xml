@@ -27,7 +27,7 @@
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
 
-            <!-- balfin:// deep links from notification actions and shortcuts -->
+            <!-- balfin:// deep links from shortcuts -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -36,26 +36,33 @@
             </intent-filter>
         </activity>
 
-        <!-- Persistent quick-add notification (tray actions open a pre-filled
-             entry sheet via balfin:// quick-add deep links). -->
+        <!-- Gesture quick-add popup: transparent card over any app. -->
+        <activity
+            android:name=".QuickAddActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/QuickAddTheme" />
+
+        <!-- Floating bubble that opens the quick-add popup. -->
         <service
-            android:name=".QuickAddNotificationService"
+            android:name=".QuickAddBubbleService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Persistent quick-add controls so the user can log finance entries from the notification tray." />
+                android:value="Floating quick-add bubble so the user can open the quick entry popup from any app." />
         </service>
 
-        <!-- Restore the quick-add notification after reboot (only if enabled). -->
-        <receiver
-            android:name=".QuickAddBootReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
+        <!-- Shake detection for the quick-add popup. -->
+        <service
+            android:name=".ShakeGestureService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Shake gesture detection to open the quick entry popup." />
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -73,5 +80,6 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 </manifest>

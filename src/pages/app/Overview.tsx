@@ -1,53 +1,53 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useFinance } from "@/finance/FinanceContext";
 import AppShell, { useEntryEdit } from "@/finance/AppShell";
-import { fmtMoney, monthKey, monthLabel, monthShift } from "@/finance/format";
-import { aggregateMonth, aggregateRange, type Period } from "@/finance/analytics";
+import { fmtMoney, monthKey } from "@/finance/format";
+import { aggregateMonth } from "@/finance/analytics";
 import { portfolioTotals, mfValue, summarizePosition } from "@/finance/portfolio";
-import { SpendEarnArea, CategoryPie, WeekdayBars, PIE_COLORS } from "@/finance/ChartBits";
 import { CatIcon } from "@/finance/icons";
-import { ChevronLeft, ChevronRight, Wallet, LineChart, Eye, EyeOff } from "lucide-react";
+import {
+  TrendingUp, TrendingDown, Wallet, ShoppingBag,
+  ChevronRight, Eye, EyeOff, Flame,
+} from "lucide-react";
 
-const TABS = ["Overview", "Patterns", "Recent"] as const;
-const PERIODS: Array<{ key: Period; label: string }> = [
-  { key: "month", label: "Month" },
-  { key: "3m", label: "3M" },
-  { key: "6m", label: "6M" },
-  { key: "1y", label: "1Y" },
-  { key: "all", label: "All" },
-];
+type Scope = "all" | "liquid" | "invest";
+type Timeline = "month" | "year" | "all";
+
+const CAT_COLORS = ["#ff908d", "#4029ba", "#42e5a2", "#c6bfff", "#60fdb8", "#ffbab7"];
+const R = 48;
+const CIRC = 2 * Math.PI * R;
 
 export default function Overview() {
   const {
-    ready, transactions, categories, budgets, accounts, stocks, exits, dividends,
-    mutualFunds, deposits, depositFlows, quotes, catName, accountName,
+    ready, transactions, categories, accounts, stocks, exits, dividends,
+    mutualFunds, depositFlows, quotes, catName, accountName,
   } = useFinance();
   const { openEntry } = useEntryEdit();
-  const [month, setMonth] = useState(monthKey(Date.now()));
-  const [tab, setTab] = useState<(typeof TABS)[number]>("Overview");
-  const [period, setPeriod] = useState<Period>("month");
+  const navigate = useNavigate();
+  const [scope, setScope] = useState<Scope>("all");
+  const [timeline, setTimeline] = useState<Timeline>("month");
   const [hide, setHide] = useState(false);
 
-  const agg = useMemo(() => aggregateMonth(transactions, catName, month), [transactions, catName, month]);
-  const prevKey = monthShift(month, -1);
-  const prev = useMemo(() => aggregateMonth(transactions, catName, prevKey), [transactions, catName, prevKey]);
-  const range = useMemo(
-    () => aggregateRange(transactions, catName, period, month),
-    [transactions, catName, period, month]
-  );
+  const month = monthKey(Date.now());
 
-  // portfolio
-  const positions = useMemo(
-    () => stocks.map((s) => summarizePosition(s, exits, dividends, quotes[s.symbol] ?? null)),
+  // ---- liquid: savings + wallets ----
+  const liquidRows = useMemo(() => {
+    return accounts
+      .filter((a) => a.type !== "investment")
+      .map((a) => {
+        let flow = 0;
+        for (const t of transactions) if (t.accountId === a._id) flow += t.kind === "income" ? t.amount : -t.amount;
+        return { id: a._id, name: a.name, type: a.type, bankName: a.bankName, bal: a.openingBalance + flow };
+      });
+  }, [accounts, transactions]);
+  const liquidBalances = useMemo(() => liquidRows.reduce((s, r) => s + r.bal, 0), [liquidRows]);
+
+  // ---- investments ----
+  const portfolio = useMemo(
+    () => portfolioTotals(stocks.map((s) => summarizePosition(s, exits, dividends, quotes[s.symbol] ?? null))),
     [stocks, exits, dividends, quotes]
   );
-  const portfolio = useMemo(() => portfolioTotals(positions), [positions]);
-  const combinedPL = portfolio.totalPL;
-  const ltCombined =
-    portfolio.longTermPL === null && portfolio.realizedPL === 0
-      ? null
-      : (portfolio.longTermPL ?? 0) + portfolio.realizedPL;
-
   const mfTotals = useMemo(() => {
     let invested = 0, value = 0;
     for (const f of mutualFunds) {
@@ -57,338 +57,383 @@ export default function Overview() {
     }
     return { invested, value };
   }, [mutualFunds, quotes]);
-
-  // Liquid = savings accounts + wallets only (investment-type accounts are
-  // counted in the investments header instead).
-  const liquidBalances = useMemo(() => {
-    let bal = 0;
-    for (const a of accounts) {
-      if (a.type === "investment") continue;
-      let flow = 0;
-      for (const t of transactions) if (t.accountId === a._id) flow += t.kind === "income" ? t.amount : -t.amount;
-      bal += a.openingBalance + flow;
-    }
-    return bal;
-  }, [accounts, transactions]);
-
-  const depositsValue = useMemo(() => {
-    let v = 0;
-    for (const f of depositFlows) v += f.type === "withdrawal" ? -f.amount : f.amount;
-    return v;
-  }, [depositFlows]);
-
-  const stockLT = portfolio.longTermValue;
-  const stockST = portfolio.shortTermValue;
-  const netStockPL = portfolio.totalPL;
+  const depositsValue = useMemo(
+    () => depositFlows.reduce((s, f) => s + (f.type === "withdrawal" ? -f.amount : f.amount), 0),
+    [depositFlows]
+  );
   const investmentsValue = portfolio.currentValue + mfTotals.value + depositsValue;
   const totalWorth = liquidBalances + investmentsValue;
+  const invPL = (portfolio.ltCombinedPL ?? 0) + (portfolio.stCombinedPL ?? 0);
 
-  const budget = budgets.find((b) => b.month === month);
-  const incomeGoal = budget?.incomeGoal ?? 0;
-  const spendLimit = budget?.expenseBudget ?? 0;
-  const savingsGoal = budget?.savingsGoal ?? 0;
+  // ---- velocity ----
+  const mAgg = useMemo(() => aggregateMonth(transactions, catName, month), [transactions, catName, month]);
+  const velocity = useMemo(() => {
+    const now = new Date();
+    let spent = 0, earned = 0, start = -Infinity;
+    if (timeline === "month") {
+      start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    } else if (timeline === "year") {
+      start = new Date(now.getFullYear(), 0, 1).getTime();
+    }
+    for (const t of transactions) {
+      if (t.date < start) continue;
+      if (t.kind === "expense") spent += t.amount;
+      else earned += t.amount;
+    }
+    // limit: current month budget applies to month view only
+    const daysInPeriod =
+      timeline === "month"
+        ? now.getDate()
+        : timeline === "year"
+          ? Math.max(1, Math.round((Date.now() - start) / 86400000))
+          : Math.max(1, Math.round((Date.now() - (transactions[transactions.length - 1]?.date ?? Date.now())) / 86400000));
+    const perDay = daysInPeriod > 0 ? spent / daysInPeriod : 0;
+    return { spent, earned, perDay };
+  }, [transactions, timeline]);
 
-  const netTrend = (() => {
-    const delta = agg.net - prev.net;
-    const pct = prev.net !== 0 ? (delta / Math.abs(prev.net)) * 100 : 0;
-    return { delta, pct };
-  })();
-  const upDown = (n: number) => (
-    <span className={n >= 0 ? "text-income" : "text-expense"}>
-      {n >= 0 ? "▲" : "▼"} {Math.abs(n).toFixed(0)}%
-    </span>
-  );
+  const donut = useMemo(() => {
+    const rows = mAgg.byCategorySpend.slice(0, 4);
+    const total = rows.reduce((s, r) => s + r.amount, 0) || 1;
+    let acc = 0;
+    return rows.map((r, i) => {
+      const frac = r.amount / total;
+      const seg = { ...r, color: CAT_COLORS[i % CAT_COLORS.length], dash: frac * CIRC, offset: -acc * CIRC };
+      acc += frac;
+      return seg;
+    });
+  }, [mAgg]);
+
+  // ---- weekly trajectory: last 7 days, income vs spend paired bars ----
+  const week = useMemo(() => {
+    const days: Array<{ label: string; inc: number; exp: number }> = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      days.push({ label: ["S", "M", "T", "W", "T", "F", "S"][d.getDay()], inc: 0, exp: 0 });
+    }
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
+    for (const t of transactions) {
+      if (t.date < start) continue;
+      const idx = 6 - Math.floor((startOfDay(now) - startOfDay(new Date(t.date))) / 86400000);
+      if (idx < 0 || idx > 6) continue;
+      if (t.kind === "income") days[idx].inc += t.amount;
+      else days[idx].exp += t.amount;
+    }
+    return days;
+  }, [transactions]);
+  const weekMax = Math.max(1, ...week.flatMap((d) => [d.inc, d.exp]));
+  const todayDow = new Date().getDay();
+
+  const recent = transactions.slice(0, 6);
+  const m = (v: string) => (hide ? "•••••" : v);
 
   if (!ready) {
     return (
-      <AppShell title="Overview" subtitle="Loading…">
+      <AppShell title="Overview">
         <div className="py-20 text-center text-sm text-ink-faint">Connecting to your database…</div>
       </AppShell>
     );
   }
 
-  const m = (v: string) => (hide ? "••••" : v);
-
   return (
-    <AppShell title="Overview" subtitle={period === "month" ? monthLabel(month) : range.label}>
-      {/* month switcher */}
-      <div className="mb-3 flex items-center justify-between">
-        <button onClick={() => setMonth(monthShift(month, -1))} className="rounded-full p-2 hover:bg-surface-2" aria-label="Previous month">
-          <ChevronLeft size={18} />
-        </button>
-        <span className="text-sm font-medium">{monthLabel(month)}</span>
-        <button
-          onClick={() => setMonth(monthShift(month, 1))}
-          disabled={month >= monthKey(Date.now())}
-          className="rounded-full p-2 hover:bg-surface-2 disabled:opacity-30"
-          aria-label="Next month"
-        >
-          <ChevronRight size={18} />
-        </button>
-      </div>
+    <AppShell title="Overview">
+      {/* ============ SECTION 1: Total Net Worth hero ============ */}
+      <section className="relative overflow-hidden rounded-2xl border border-white/5 bg-surface-low p-5 shadow-[0_4px_16px_-2px_rgba(0,0,0,0.35)]">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-10 -left-10 h-36 w-36 rounded-full bg-secondary-deep/20 blur-2xl" />
+        <div className="relative z-10">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-ink-faint">Total Net Worth</span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setHide(!hide)}
+                className="rounded-full p-1.5 text-ink-faint active:scale-95"
+                aria-label="Toggle privacy"
+              >
+                {hide ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+              <span className={`flex items-center gap-1 rounded-full border border-white/10 bg-card px-2.5 py-1 ${mAgg.net >= 0 ? "text-primary-bright" : "text-tertiary-deep"}`}>
+                {mAgg.net >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+                <span className="text-[10px] font-bold tabular">
+                  {mAgg.net >= 0 ? "+" : "−"}
+                  {m(fmtMoney(Math.abs(mAgg.net), { compact: true }))}
+                </span>
+                <span className="text-[10px] text-ink-faint">this month</span>
+              </span>
+            </div>
+          </div>
+          <p className="my-2 text-4xl font-extrabold leading-none tracking-tight tabular">
+            {m(fmtMoney(totalWorth, { compact: true }))}
+          </p>
 
-      {/* hero */}
-      <section className="card relative overflow-hidden p-5">
-        <div className="absolute right-3 top-3">
-          <button onClick={() => setHide(!hide)} className="rounded-full p-1.5 text-ink-faint hover:bg-surface-2" aria-label="Toggle privacy">
-            {hide ? <EyeOff size={15} /> : <Eye size={15} />}
-          </button>
-        </div>
-        <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">Net flow this month</p>
-        <p className="mt-1 font-display text-4xl font-semibold tabular">{m(fmtMoney(agg.net, { sign: true }))}</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <span className="rounded-full bg-income/10 px-3 py-1 text-xs font-medium text-income tabular">↑ {m(fmtMoney(agg.income))}</span>
-          <span className="rounded-full bg-expense/10 px-3 py-1 text-xs font-medium text-expense tabular">↓ {m(fmtMoney(agg.expense))}</span>
-          <span className="rounded-full bg-surface-2 px-3 py-1 text-xs text-ink-faint">{agg.count} entries</span>
-        </div>
-        <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-          <div className="rounded-xl bg-surface-2 px-3 py-2">
-            vs {monthLabel(prevKey).split(" ")[0]}: {upDown(netTrend.pct)} {fmtMoney(netTrend.delta, { sign: true })}
+          {/* toggle pills — content only shows when pressed */}
+          <div className="mt-3 flex items-center gap-1.5 border-t border-white/10 pt-3">
+            {(
+              [
+                { key: "all", label: "All" },
+                { key: "liquid", label: "Liquid", value: liquidBalances, dot: "bg-primary" },
+                { key: "invest", label: "Investments", value: investmentsValue, dot: "bg-secondary" },
+              ] as const
+            ).map((t) => {
+              const active = scope === t.key;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setScope(active && t.key !== "all" ? "all" : t.key)}
+                  className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition active:scale-[0.98] ${
+                    active
+                      ? "bg-primary text-[#003823] shadow-sm"
+                      : "border border-white/10 bg-card text-ink-faint"
+                  }`}
+                >
+                  {t.label}
+                  {"value" in t && t.value !== undefined && (
+                    <span className={`text-[11px] font-bold tabular ${active ? "text-[#003823]" : t.key === "invest" ? "text-secondary" : "text-primary-bright"}`}>
+                      {m(fmtMoney(t.value, { compact: true }))}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
-          <div className="rounded-xl bg-surface-2 px-3 py-2">
-            {budget ? (agg.expense <= spendLimit ? "✓ Budget met" : "Over budget") : "No budget set"}
-          </div>
-        </div>
-        {savingsGoal > 0 && (
-          <div className="mt-3">
-            <div className="mb-1 flex justify-between text-xs text-ink-soft">
-              <span>Savings goal</span>
-              <span className="tabular">{fmtMoney(Math.max(0, agg.net))} / {fmtMoney(savingsGoal)}</span>
+
+          {/* expandable scopes */}
+          {scope === "liquid" && (
+            <div className="animate-fade mt-3 space-y-1.5">
+              {liquidRows.map((r) => (
+                <div key={r.id} className="flex items-center justify-between rounded-xl bg-card px-3 py-2">
+                  <span className="flex items-center gap-2 text-xs">
+                    <span className={`flex h-7 w-7 items-center justify-center rounded-full ${r.type === "wallet" ? "bg-secondary-deep/30 text-secondary" : "bg-primary/15 text-primary-bright"}`}>
+                      <Wallet size={13} />
+                    </span>
+                    <span>
+                      <span className="block font-semibold">{r.name}</span>
+                      <span className="block text-[10px] text-ink-faint">{r.bankName ?? r.type}</span>
+                    </span>
+                  </span>
+                  <span className="text-xs font-bold tabular">{m(fmtMoney(r.bal, { compact: true }))}</span>
+                </div>
+              ))}
+              {liquidRows.length === 0 && <p className="py-2 text-center text-xs text-ink-faint">No savings accounts or wallets yet.</p>}
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-surface-2">
-              <div className="h-full rounded-full bg-income" style={{ width: `${Math.min(100, (Math.max(0, agg.net) / savingsGoal) * 100)}%` }} />
+          )}
+
+          {scope === "invest" && (
+            <div className="animate-fade mt-3 space-y-1.5">
+              <div className="grid grid-cols-2 gap-1.5">
+                <InvTile label="Stocks · long term" value={portfolio.longTermValue} hide={hide} />
+                <InvTile label="Stocks · short term" value={portfolio.shortTermValue} hide={hide} />
+                <InvTile label="Mutual funds" value={mfTotals.value} hide={hide} />
+                <InvTile label="FD · PPF · deposits" value={depositsValue} hide={hide} />
+              </div>
+              <div className="flex items-center justify-between rounded-xl bg-card px-3 py-2">
+                <span className="text-xs text-ink-faint">Running P&amp;L (LT + ST + dividends)</span>
+                <span className={`text-xs font-bold tabular ${invPL >= 0 ? "text-primary-bright" : "text-tertiary-deep"}`}>
+                  {m(fmtMoney(invPL, { sign: true, compact: true }))}
+                </span>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </section>
 
-      {/* all-time position — net sum of everything, valued today */}
-      <section className="card mt-3 p-5">
-        <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">All-time position — net worth today</p>
-        <p className="mt-1 font-display text-3xl font-semibold tabular">{m(fmtMoney(totalWorth, { compact: true }))}</p>
-        <p className="mt-0.5 text-[11px] text-ink-faint">accounts + wallets + stocks at market price + funds &amp; deposits, profits and losses included</p>
-
-        <div className="mt-4">
+      {/* ============ SECTION 2: daily bento ============ */}
+      <section className="mt-3 grid grid-cols-2 gap-3">
+        <div className="flex flex-col justify-between rounded-2xl border border-white/5 bg-card p-3.5">
           <div className="flex items-center justify-between">
-            <p className="flex items-center gap-1.5 text-sm font-semibold"><Wallet size={14} className="text-primary" /> Liquid funds</p>
-            <p className="text-base font-semibold tabular">{m(fmtMoney(liquidBalances, { compact: true }))}</p>
+            <span className="text-xs font-semibold text-ink-faint">Today's Spend</span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-card-high text-ink-soft">
+              <ShoppingBag size={14} />
+            </span>
           </div>
-          <p className="mt-0.5 text-[11px] text-ink-faint">Savings accounts + wallets only</p>
+          <div className="mt-2">
+            <p className="text-xl font-bold tabular">{m(fmtMoney(todaySpend(transactions)))}</p>
+            <p className="text-[11px] text-ink-faint">
+              {transactions.filter((t) => t.kind === "expense" && t.date >= startOfDay(new Date())).length} transactions
+            </p>
+          </div>
         </div>
-
-        <div className="mt-3 border-t border-line/70 pt-3">
+        <div className="flex flex-col justify-between rounded-2xl border border-white/5 bg-card p-3.5">
           <div className="flex items-center justify-between">
-            <p className="flex items-center gap-1.5 text-sm font-semibold"><LineChart size={14} className="text-primary" /> Investments</p>
-            <p className="text-base font-semibold tabular">{m(fmtMoney(investmentsValue, { compact: true }))}</p>
+            <span className="text-xs font-semibold text-ink-faint">This Month</span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Flame size={14} />
+            </span>
           </div>
-          <div className="mt-2 grid grid-cols-3 gap-2">
-            <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-              <p className="text-[10px] text-ink-faint">Stocks · long term</p>
-              <p className="text-xs font-semibold tabular">{m(fmtMoney(stockLT, { compact: true }))}</p>
-            </div>
-            <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-              <p className="text-[10px] text-ink-faint">Stocks · short term</p>
-              <p className="text-xs font-semibold tabular">{m(fmtMoney(stockST, { compact: true }))}</p>
-            </div>
-            <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-              <p className="text-[10px] text-ink-faint">Stock P&amp;L (all)</p>
-              <p className={`text-xs font-semibold tabular ${(netStockPL ?? 0) >= 0 ? "text-income" : "text-expense"}`}>
-                {netStockPL === null ? "—" : m(fmtMoney(netStockPL, { sign: true, compact: true }))}
+          <div className="mt-2">
+            <p className={`text-xl font-bold tabular ${mAgg.net >= 0 ? "text-primary-bright" : "text-tertiary-deep"}`}>
+              {m(fmtMoney(mAgg.net, { sign: true, compact: true }))}
+            </p>
+            <p className="text-[11px] text-ink-faint">
+              ↑{m(fmtMoney(mAgg.income, { compact: true }))} ↓{m(fmtMoney(mAgg.expense, { compact: true }))}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ============ SECTION 3: Spend Velocity ============ */}
+      <section className="mt-3 space-y-4 rounded-2xl border border-white/5 bg-surface-low p-4">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold">Spend Velocity</h2>
+              <p className="text-xs text-ink-faint tabular">
+                {m(fmtMoney(velocity.spent, { compact: true }))} spent · {m(fmtMoney(velocity.perDay, { compact: true }))}/day avg
               </p>
             </div>
-            <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-              <p className="text-[10px] text-ink-faint">Mutual funds</p>
-              <p className="text-xs font-semibold tabular">{m(fmtMoney(mfTotals.value, { compact: true }))}</p>
-            </div>
-            <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-              <p className="text-[10px] text-ink-faint">FD · PPF · deposits</p>
-              <p className="text-xs font-semibold tabular">{m(fmtMoney(depositsValue, { compact: true }))}</p>
-            </div>
-            <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-              <p className="text-[10px] text-ink-faint">Total invested</p>
-              <p className="text-xs font-semibold tabular">{m(fmtMoney(portfolio.investedAllTime, { compact: true }))}</p>
-            </div>
+            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+              {timeline === "month" ? "Monthly" : timeline === "year" ? "Yearly" : "All time"}
+            </span>
           </div>
-        </div>
-      </section>
-
-      {/* investment P&L card — combined + split */}
-      <section className="card mt-3 p-5">
-        <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">Investment P&L</p>
-        <div className="mt-1 flex items-baseline justify-between">
-          <p className={`font-display text-2xl font-semibold tabular ${(combinedPL ?? 0) >= 0 ? "text-income" : "text-expense"}`}>
-            {combinedPL === null ? "—" : m(fmtMoney(combinedPL, { sign: true, compact: true }))}
-          </p>
-          <span className="text-[11px] text-ink-faint">long + short · realized + unrealized</span>
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-            <p className="text-[11px] text-ink-faint">Long term (≥ 1 yr)</p>
-            <p className={`text-sm font-semibold tabular ${(portfolio.ltCombinedPL ?? 0) >= 0 ? "text-income" : "text-expense"}`}>
-              {portfolio.ltCombinedPL === null ? "—" : fmtMoney(portfolio.ltCombinedPL, { sign: true, compact: true })}
-            </p>
-            <p className={`text-[11px] tabular ${(portfolio.longTermPL ?? 0) >= 0 ? "text-income" : "text-expense"}`}>
-              open {portfolio.longTermPL === null ? "—" : fmtMoney(portfolio.longTermPL, { sign: true, compact: true })}
-            </p>
-          </div>
-          <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-            <p className="text-[11px] text-ink-faint">Short term (&lt; 1 yr)</p>
-            <p className={`text-sm font-semibold tabular ${(portfolio.stCombinedPL ?? 0) >= 0 ? "text-income" : "text-expense"}`}>
-              {portfolio.stCombinedPL === null ? "—" : fmtMoney(portfolio.stCombinedPL, { sign: true, compact: true })}
-            </p>
-            <p className={`text-[11px] tabular ${(portfolio.shortTermPL ?? 0) >= 0 ? "text-income" : "text-expense"}`}>
-              open {portfolio.shortTermPL === null ? "—" : fmtMoney(portfolio.shortTermPL, { sign: true, compact: true })}
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* tabs */}
-      <div className="mt-4 grid grid-cols-3 gap-1 rounded-xl bg-surface-2 p-1">
-        {TABS.map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`rounded-lg py-2 text-sm font-medium transition ${tab === t ? "bg-card text-ink shadow-sm" : "text-ink-soft"}`}>
-            {t}
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-3 space-y-3">
-        {tab === "Overview" && (
-          <>
-            {/* period switcher */}
-            <div className="grid grid-cols-5 gap-1 rounded-xl bg-surface-2 p-1">
-              {PERIODS.map((p) => (
-                <button key={p.key} onClick={() => setPeriod(p.key)} className={`rounded-lg py-1.5 text-xs font-medium transition ${period === p.key ? "bg-card text-ink shadow-sm" : "text-ink-soft"}`}>
-                  {p.label}
-                </button>
-              ))}
-            </div>
-
-            <section className="card p-4">
-              <div className="mb-2 flex items-baseline justify-between">
-                <h3 className="text-sm font-semibold">Flow — {period === "month" ? "daily" : "monthly"}</h3>
-                <span className="text-xs tabular text-ink-soft">
-                  net {m(fmtMoney(range.net, { sign: true, compact: true }))}
-                </span>
-              </div>
-              <SpendEarnArea data={range.series} />
-            </section>
-
-            <div className="grid grid-cols-2 gap-3">
-              <section className="card p-4">
-                <h3 className="mb-1 text-sm font-semibold">Spent — {PERIODS.find((p) => p.key === period)?.label}</h3>
-                <CategoryPie
-                  data={range.byCategorySpend.map((c) => ({ name: c.name, amount: c.amount }))}
-                />
-                <ul className="mt-2 space-y-1">
-                  {range.byCategorySpend.slice(0, 4).map((c, i) => (
-                    <li key={c.id} className="flex items-center gap-2 text-xs">
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                      <span className="flex-1 truncate text-ink-soft">{c.name}</span>
-                      <span className="tabular font-medium">{fmtMoney(c.amount, { compact: true })} · {c.pct.toFixed(0)}%</span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-              <section className="card p-4">
-                <h3 className="mb-1 text-sm font-semibold">Earned — {PERIODS.find((p) => p.key === period)?.label}</h3>
-                <CategoryPie
-                  data={range.byCategoryEarn.map((c) => ({ name: c.name, amount: c.amount }))}
-                />
-                <ul className="mt-2 space-y-1">
-                  {range.byCategoryEarn.slice(0, 4).map((c, i) => (
-                    <li key={c.id} className="flex items-center gap-2 text-xs">
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                      <span className="flex-1 truncate text-ink-soft">{c.name}</span>
-                      <span className="tabular font-medium">{fmtMoney(c.amount, { compact: true })} · {c.pct.toFixed(0)}%</span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            </div>
-
-            {incomeGoal > 0 && period === "month" && (
-              <section className="card p-4">
-                <div className="mb-1 flex justify-between text-sm">
-                  <span className="font-semibold">Income goal</span>
-                  <span className="tabular text-ink-soft">{fmtMoney(agg.income)} / {fmtMoney(incomeGoal)}</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-surface-2">
-                  <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, (agg.income / incomeGoal) * 100)}%` }} />
-                </div>
-              </section>
-            )}
-          </>
-        )}
-
-        {tab === "Patterns" && (
-          <>
-            <section className="card p-4">
-              <h3 className="mb-2 text-sm font-semibold">Weekday spending — {monthLabel(month)}</h3>
-              <WeekdayBars data={agg.weekdaySpend} />
-            </section>
-            <section className="card p-4">
-              <h3 className="mb-2 text-sm font-semibold">Daily net flow</h3>
-              <div className="grid grid-cols-7 gap-1">
-                {agg.dailyNet.map((d) => {
-                  const intensity = Math.min(1, Math.abs(d.net) / Math.max(1, agg.expense / 10));
-                  return (
-                    <div
-                      key={d.day}
-                      title={`Day ${d.day}: ${fmtMoney(d.net)}`}
-                      className="flex aspect-square items-center justify-center rounded text-[9px] tabular"
-                      style={{
-                        background: d.net === 0 ? "var(--color-surface-2)" : d.net > 0 ? `rgba(29,143,126,${0.15 + intensity * 0.55})` : `rgba(194,82,61,${0.15 + intensity * 0.55})`,
-                        color: intensity > 0.6 ? "white" : "inherit",
-                      }}
-                    >
-                      {d.day}
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-            <section className="card p-4">
-              <h3 className="mb-2 text-sm font-semibold">Top subcategories</h3>
-              {agg.bySubcategory.length === 0 && <p className="text-sm text-ink-faint">Tag expenses with subcategories to see patterns here.</p>}
-              <ul className="space-y-2">
-                {agg.bySubcategory.slice(0, 6).map((s) => (
-                  <li key={s.key} className="flex items-center gap-3 text-sm">
-                    <span className="flex-1 truncate text-ink-soft">{s.name}</span>
-                    <span className="tabular font-medium">{fmtMoney(s.amount)}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          </>
-        )}
-
-        {tab === "Recent" && (
-          <section className="card divide-y divide-line/70 overflow-hidden">
-            {transactions.slice(0, 40).length === 0 && (
-              <p className="p-6 text-center text-sm text-ink-faint">No entries yet — tap the + button to add your first one.</p>
-            )}
-            {transactions.slice(0, 40).map((t) => (
-              <button key={t._id} onClick={() => openEntry(t._id)} className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-surface-2">
-                <span className={`flex h-9 w-9 items-center justify-center rounded-full ${t.kind === "income" ? "bg-income/10 text-income" : "bg-expense/10 text-expense"}`}>
-                  <CatIcon name={categories.find((c) => c._id === t.categoryId)?.icon} size={15} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{catName(t.categoryId)}{t.subcategory ? ` › ${t.subcategory}` : ""}</span>
-                  <span className="block truncate text-xs text-ink-faint">
-                    {new Date(t.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                    {t.note ? ` · ${t.note}` : ""}
-                    {t.accountId ? ` · ${accountName(t.accountId)}` : ""}
-                  </span>
-                </span>
-                <span className={`tabular text-sm font-semibold ${t.kind === "income" ? "text-income" : "text-expense"}`}>
-                  {t.kind === "income" ? "+" : "−"}{fmtMoney(t.amount)}
-                </span>
+          <div className="flex w-fit items-center gap-1 rounded-full border border-white/10 bg-card p-1">
+            {(
+              [
+                { key: "month", label: "Monthly" },
+                { key: "year", label: "Yearly" },
+                { key: "all", label: "All Time" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTimeline(t.key)}
+                className={`rounded-full px-3 py-1 text-[11px] font-semibold transition active:scale-[0.98] ${
+                  timeline === t.key ? "bg-primary text-[#003823] shadow-sm" : "text-ink-faint"
+                }`}
+              >
+                {t.label}
               </button>
             ))}
-          </section>
-        )}
-      </div>
+          </div>
+        </div>
+
+        {/* donut & legend */}
+        <div className="flex items-center justify-around pt-1">
+          <div className="relative flex h-36 w-36 items-center justify-center">
+            <svg className="h-36 w-36 -rotate-90" viewBox="0 0 120 120">
+              <circle cx="60" cy="60" fill="none" r={R} stroke="#1f293d" strokeWidth="12" />
+              {donut.map((seg) => (
+                <circle
+                  key={seg.id}
+                  cx="60"
+                  cy="60"
+                  fill="none"
+                  r={R}
+                  stroke={seg.color}
+                  strokeDasharray={`${seg.dash} ${CIRC - seg.dash}`}
+                  strokeDashoffset={seg.offset}
+                  strokeLinecap="round"
+                  strokeWidth="12"
+                />
+              ))}
+            </svg>
+            <div className="absolute flex flex-col items-center justify-center text-center">
+              <span className="text-[10px] font-semibold uppercase text-ink-faint">Spent</span>
+              <span className="text-base font-bold tabular">{m(fmtMoney(mAgg.expense, { compact: true }))}</span>
+            </div>
+          </div>
+          <div className="space-y-2 text-xs font-semibold">
+            {donut.map((seg) => (
+              <div key={seg.id} className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ background: seg.color }} />
+                <span className="text-[13px] text-ink-faint">
+                  {seg.name}: {seg.pct.toFixed(0)}%
+                </span>
+              </div>
+            ))}
+            {donut.length === 0 && <span className="text-[13px] text-ink-faint">No spends yet</span>}
+          </div>
+        </div>
+
+        {/* weekly trajectory */}
+        <div className="border-t border-white/10 pt-3">
+          <div className="mb-2.5 flex items-center justify-between">
+            <span className="text-xs font-semibold text-ink-faint">Weekly Trajectory (Income vs Spend)</span>
+            <div className="flex items-center gap-3 text-[10px] font-semibold text-ink-faint">
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded bg-primary" /><span>In</span></span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded bg-card-highest" /><span>Out</span></span>
+            </div>
+          </div>
+          <div className="flex h-20 items-end justify-between px-1 pt-2">
+            {week.map((d, i) => (
+              <div key={i} className="flex flex-col items-center gap-1">
+                <div className="flex h-14 items-end gap-1">
+                  <div
+                    className={`w-2 rounded-t-sm bg-primary ${i === 6 ? "shadow-[0_0_8px_rgba(66,229,162,0.6)]" : ""}`}
+                    style={{ height: `${Math.max(4, (d.inc / weekMax) * 100)}%` }}
+                  />
+                  <div className="w-2 rounded-t-sm bg-card-highest" style={{ height: `${Math.max(4, (d.exp / weekMax) * 100)}%` }} />
+                </div>
+                <span className={`text-[10px] font-semibold ${i === 6 ? "text-primary" : "text-ink-faint"}`}>{d.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ============ SECTION 4: recent activity ============ */}
+      <section className="mt-4 space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-base font-semibold">Recent Activity</h2>
+          <button onClick={() => navigate("/app/ledger")} className="flex items-center gap-0.5 text-xs font-semibold text-primary">
+            <span>View All</span>
+            <ChevronRight size={14} />
+          </button>
+        </div>
+        <div className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10 bg-card">
+          {recent.length === 0 && (
+            <p className="p-6 text-center text-xs text-ink-faint">No entries yet — tap Quick Log to add your first one.</p>
+          )}
+          {recent.map((t) => (
+            <button
+              key={t._id}
+              onClick={() => openEntry(t._id)}
+              className="flex w-full items-center justify-between p-3.5 text-left transition active:bg-card-high"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <span
+                  className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${
+                    t.kind === "income" ? "bg-primary/15 text-primary-bright" : "bg-tertiary-deep/20 text-tertiary-deep"
+                  }`}
+                >
+                  <CatIcon name={categories.find((c) => c._id === t.categoryId)?.icon} size={17} />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold leading-tight">
+                    {catName(t.categoryId)}
+                    {t.subcategory ? ` › ${t.subcategory}` : ""}
+                  </p>
+                  <p className="truncate text-xs text-ink-faint">
+                    {t.note ? `${t.note} · ` : ""}
+                    {t.accountId ? `${accountName(t.accountId)} · ` : ""}
+                    {new Date(t.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                  </p>
+                </div>
+              </div>
+              <span className={`text-sm font-semibold tabular ${t.kind === "income" ? "text-primary-bright" : "text-ink"}`}>
+                {t.kind === "income" ? "+" : "−"}
+                {m(fmtMoney(t.amount))}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
     </AppShell>
   );
+}
+
+function InvTile({ label, value, hide }: { label: string; value: number; hide: boolean }) {
+  return (
+    <div className="rounded-xl bg-card p-2.5 text-center">
+      <p className="text-[10px] text-ink-faint">{label}</p>
+      <p className="text-xs font-bold tabular">{hide ? "••••" : fmtMoney(value, { compact: true })}</p>
+    </div>
+  );
+}
+
+function startOfDay(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+function todaySpend(txns: Array<{ kind: string; amount: number; date: number }>) {
+  const start = startOfDay(new Date());
+  return txns.filter((t) => t.kind === "expense" && t.date >= start).reduce((s, t) => s + t.amount, 0);
 }
