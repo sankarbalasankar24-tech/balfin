@@ -165,7 +165,7 @@ export default function Investments() {
               INR
             </span>
           </div>
-          <div className="text-4xl font-extrabold tracking-tight tabular">{fmtMoney(totalValue, { compact: true })}</div>
+          <div className="text-[40px] font-extrabold leading-[48px] tracking-tight tabular">{fmtMoney(totalValue, { compact: true })}</div>
 
           {/* metric badges row */}
           <div className="grid grid-cols-2 gap-2 pt-1">
@@ -205,7 +205,7 @@ export default function Investments() {
       <section className="mt-4 space-y-4 rounded-2xl border border-white/5 bg-card p-5">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold">Asset Allocation</h2>
+            <h2 className="text-base font-semibold">Asset Allocation</h2>
             <p className="text-[11px] text-ink-faint">Diversification across {Math.max(1, alloc.length)} asset classes</p>
           </div>
         </div>
@@ -287,8 +287,8 @@ export default function Investments() {
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-secondary" />
-              <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-                <Clock size={14} className="text-secondary" /> Long-Term Holdings
+              <h3 className="flex items-center gap-1.5 text-base font-semibold">
+                <Clock size={15} className="text-secondary" /> Long-Term Holdings
               </h3>
             </div>
             <span className="text-sm font-bold text-secondary tabular">{fmtMoney(ltSec.value, { compact: true })}</span>
@@ -322,8 +322,8 @@ export default function Investments() {
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-primary" />
-              <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-                <TrendingUp size={14} className="text-primary" /> Short-Term &amp; Active
+              <h3 className="flex items-center gap-1.5 text-base font-semibold">
+                <TrendingUp size={15} className="text-primary" /> Short-Term &amp; Active
               </h3>
             </div>
             <span className="text-sm font-bold text-primary tabular">{fmtMoney(stSec.value, { compact: true })}</span>

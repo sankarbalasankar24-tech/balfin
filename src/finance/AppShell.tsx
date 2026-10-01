@@ -52,7 +52,7 @@ export default function AppShell({
     <EntryEditContext.Provider value={{ openEntry, openEntryWithKind }}>
       <div className="mx-auto flex min-h-screen w-full max-w-lg flex-col">
         <header className="sticky top-0 z-30 bg-background/90 px-4 pb-3 pt-4 backdrop-blur">
-          <h1 className="text-xl font-extrabold tracking-tight">{title}</h1>
+          <h1 className="text-[26px] font-bold leading-8 tracking-tight">{title}</h1>
           {subtitle && <p className="text-xs text-ink-soft">{subtitle}</p>}
         </header>
         <main className="flex-1 px-4 pb-28">{children}</main>

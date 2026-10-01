@@ -28,7 +28,7 @@ export default function Landing() {
       <div className="mt-10 space-y-3">
         <button
           onClick={() => { window.location.hash = "/app"; }}
-          className="block w-full rounded-xl bg-primary py-3.5 text-center text-sm font-semibold text-white"
+          className="block w-full rounded-full bg-primary py-3.5 text-center text-sm font-bold text-[#003823] shadow-[0_12px_32px_-4px_rgba(0,200,136,0.35)]"
         >
           Take command of your money
         </button>

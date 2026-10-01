@@ -4,7 +4,7 @@ import AppShell from "@/finance/AppShell";
 import { fmtMoney, CURRENCIES, setCurrency } from "@/finance/format";
 import { CatIcon } from "@/finance/icons";
 import {
-  Plus, Trash2, Download, Moon, Sun, Building2, X, FileSpreadsheet,
+  Plus, Trash2, Download, Building2, X, FileSpreadsheet,
   Pencil, Vibrate, Hand, Ban, RefreshCw, CheckCircle2, AlertCircle, ExternalLink,
 } from "lucide-react";
 
@@ -20,7 +20,7 @@ export default function Manage() {
   const {
     categories, transactions, accounts, addCategory, updateCategory, deleteCategory,
     addSub, deleteSub, addAccount, updateAccount, deleteAccount,
-    currency, setCurrencyPref, theme, toggleTheme, catName,
+    currency, setCurrencyPref, catName,
     quickAddGesture, setQuickAddGesture,
     sheetSync, setSheetEndpoint, syncSheets, sheetsSyncing,
   } = useFinance();
@@ -104,11 +104,7 @@ export default function Manage() {
                 ))}
               </select>
             </label>
-            <button onClick={toggleTheme} className="flex w-full items-center justify-between rounded-xl bg-surface-low px-4 py-3 text-sm">
-              <span>{theme === "dark" ? "Dark" : "Light"} mode</span>
-              {theme === "dark" ? <Moon size={16} /> : <Sun size={16} />}
-            </button>
-          </div>
+</div>
 
           {/* quick-add gesture chooser */}
           <div className="space-y-3 rounded-2xl border border-white/5 bg-card p-5">

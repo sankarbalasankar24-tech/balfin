@@ -96,8 +96,6 @@ interface FinanceCtx {
   // prefs
   currency: string;
   setCurrencyPref: (c: string) => void;
-  theme: "light" | "dark";
-  toggleTheme: () => void;
   quickAddGesture: QuickAddGesture;
   setQuickAddGesture: (g: QuickAddGesture) => void;
   // Google Sheets auto-sync
@@ -210,7 +208,6 @@ function Inner({ children }: { children: React.ReactNode }) {
   }, [ready, categories.length, mSeedDefaults]);
 
   const [currency, setCurrencyPref] = usePref("currency", "INR");
-  const [theme, setTheme] = usePref<"light" | "dark">("theme", "light");
   const [quickAddGesture, setQuickAddGesturePref] = usePref<QuickAddGesture>("quickAddGesture", "bubble");
 
   // push gesture choice into the Android layer (bubble / shake service)
@@ -229,10 +226,11 @@ function Inner({ children }: { children: React.ReactNode }) {
   const [tick, setTick] = useState(0);
 
   useEffect(() => setCurrency(currency), [currency]);
+  // The app is dark-first: the design's deep navy canvas is always on.
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
-    document.documentElement.classList.toggle("light", theme === "light");
-  }, [theme]);
+    document.documentElement.classList.add("dark");
+    document.documentElement.classList.remove("light");
+  }, []);
 
   const fetchQuotes = useAction(api.market.quotes);
   const [quotes, setQuotes] = useState<Record<string, number | null>>({});
@@ -377,8 +375,6 @@ function Inner({ children }: { children: React.ReactNode }) {
     accountName,
     currency,
     setCurrencyPref,
-    theme,
-    toggleTheme: () => setTheme(theme === "light" ? "dark" : "light"),
     quickAddGesture,
     setQuickAddGesture: setQuickAddGesturePref,
     sheetSync: sheetCfg ?? null,
@@ -544,7 +540,7 @@ function SetupScreen({ onSaved }: { onSaved: (url: string) => void }) {
           onChange={(e) => setUrl(e.target.value.trim())}
         />
         <button
-          className="w-full rounded-xl bg-primary text-white py-2.5 text-sm font-medium"
+          className="w-full rounded-full bg-primary py-2.5 text-sm font-bold text-[#003823]"
           onClick={() => url && onSaved(url)}
         >
           Connect

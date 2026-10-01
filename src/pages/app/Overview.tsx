@@ -162,7 +162,7 @@ export default function Overview() {
               </span>
             </div>
           </div>
-          <p className="my-2 text-4xl font-extrabold leading-none tracking-tight tabular">
+          <p className="my-2 text-[40px] font-extrabold leading-[48px] tracking-tight tabular">
             {m(fmtMoney(totalWorth, { compact: true }))}
           </p>
 
@@ -247,7 +247,7 @@ export default function Overview() {
             </span>
           </div>
           <div className="mt-2">
-            <p className="text-xl font-bold tabular">{m(fmtMoney(todaySpend(transactions)))}</p>
+            <p className="text-[22px] font-semibold tabular">{m(fmtMoney(todaySpend(transactions)))}</p>
             <p className="text-[11px] text-ink-faint">
               {transactions.filter((t) => t.kind === "expense" && t.date >= startOfDay(new Date())).length} transactions
             </p>
@@ -261,7 +261,7 @@ export default function Overview() {
             </span>
           </div>
           <div className="mt-2">
-            <p className={`text-xl font-bold tabular ${mAgg.net >= 0 ? "text-primary-bright" : "text-tertiary-deep"}`}>
+            <p className={`text-[22px] font-semibold tabular ${mAgg.net >= 0 ? "text-primary-bright" : "text-tertiary-deep"}`}>
               {m(fmtMoney(mAgg.net, { sign: true, compact: true }))}
             </p>
             <p className="text-[11px] text-ink-faint">
@@ -276,7 +276,7 @@ export default function Overview() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold">Spend Velocity</h2>
+              <h2 className="text-lg font-semibold">Spend Velocity</h2>
               <p className="text-xs text-ink-faint tabular">
                 {m(fmtMoney(velocity.spent, { compact: true }))} spent · {m(fmtMoney(velocity.perDay, { compact: true }))}/day avg
               </p>
@@ -373,7 +373,7 @@ export default function Overview() {
       {/* ============ SECTION 4: recent activity ============ */}
       <section className="mt-4 space-y-3">
         <div className="flex items-center justify-between px-1">
-          <h2 className="text-base font-semibold">Recent Activity</h2>
+          <h2 className="text-lg font-semibold">Recent Activity</h2>
           <button onClick={() => navigate("/app/ledger")} className="flex items-center gap-0.5 text-xs font-semibold text-primary">
             <span>View All</span>
             <ChevronRight size={14} />

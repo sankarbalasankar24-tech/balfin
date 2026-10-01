@@ -46,44 +46,18 @@
   --color-expense: #ff908d;
   --color-accent: #c6bfff;
 
-  --radius-pill: 9999px;
-  --radius-lg: 2rem;
-  --radius-xl: 3rem;
-}
-
-/* Light mode — soft neutral daylight counterpart of the navy canvas.
-   .light on <html> (theme toggle flips between .dark / .light). */
-.light {
-  --color-background: #f4f6fb;
-  --color-surface: #f4f6fb;
-  --color-surface-low: #ffffff;
-  --color-surface-2: #eef1f8;
-  --color-card: #ffffff;
-  --color-card-high: #e9edf6;
-  --color-card-highest: #dfe4ef;
-  --color-surface-bright: #ffffff;
-  --color-surface-lowest: #e7ebf4;
-
-  --color-ink: #1b2437;
-  --color-ink-soft: #5a667f;
-  --color-ink-faint: #8b95a9;
-  --color-line: #dfe3ee;
-  --color-outline: #c3cadb;
-
-  --color-primary-soft: #d9f6ea;
-  --color-income: #0a9d69;
-  --color-expense: #e35d5a;
+  /* Design shape scale: pills full, inputs 16px, cards 24px, sheets 28px */
+  --radius-lg: 1rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 1.75rem;
 }
 
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
-  }
-  .dark {
     color-scheme: dark;
-  }
-  .light {
-    color-scheme: light;
+    background: var(--color-background);
   }
   body {
     @apply bg-background text-ink font-sans antialiased;
@@ -103,11 +77,6 @@
   @apply rounded-2xl bg-card;
   border: 1px solid rgb(255 255 255 / 0.05);
   box-shadow: 0 4px 16px -2px rgb(0 0 0 / 0.35);
-}
-.light .card,
-.light[class*="card"] {
-  border-color: rgb(15 23 42 / 0.06);
-  box-shadow: 0 4px 16px -2px rgb(15 23 42 / 0.08);
 }
 
 @utility tabular {

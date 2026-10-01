@@ -114,7 +114,7 @@ export default function Budgets() {
               Monthly Limit Burn
             </span>
             <div className="mt-1 flex items-baseline gap-2">
-              <h2 className="text-2xl font-bold tracking-tight tabular">{fmtMoney(agg.expense, { compact: true })}</h2>
+              <h2 className="text-[26px] font-bold leading-8 tracking-tight tabular">{fmtMoney(agg.expense, { compact: true })}</h2>
               <span className="text-sm text-ink-soft tabular">/ {limit ? fmtMoney(limit, { compact: true }) : "no limit"}</span>
             </div>
           </div>
@@ -195,7 +195,7 @@ export default function Budgets() {
       <section className="mt-4 flex flex-col gap-3">
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-bold">Category Limits</h3>
+            <h3 className="text-base font-semibold">Category Limits</h3>
             <span className="rounded-full bg-card-high px-2 py-0.5 text-[11px] font-semibold text-ink-soft">
               {activeCount} active
             </span>
