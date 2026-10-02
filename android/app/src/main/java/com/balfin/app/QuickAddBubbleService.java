@@ -5,12 +5,10 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
-import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.os.Build;
-import android.os.Handler;
 import android.os.IBinder;
-import android.os.Looper;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -21,7 +19,12 @@ import android.widget.ImageView;
  * Floating quick-add bubble: a small mint circle that hovers over any app.
  * Drag to move; a tap (little movement) opens the transparent QuickAddActivity
  * on top of whatever the user was doing. Runs as a silent low-importance
- * foreground service so Android keeps it alive.
+ * foreground service that is START_STICKY and survives task removal ("clean
+ * all") and reboots (QuickAddBootReceiver re-applies the stored gesture).
+ *
+ * While the "Display over other apps" permission is missing the service stays
+ * dormant; the Manage screen restarts it (setGesture) as soon as the user
+ * grants access, and the bubble appears without needing an app restart.
  */
 public class QuickAddBubbleService extends Service {
 
@@ -29,6 +32,7 @@ public class QuickAddBubbleService extends Service {
   private static final int NOTIF_ID = 4712;
   private WindowManager wm;
   private View bubbleView;
+  private boolean viewAdded = false;
 
   @Override
   public IBinder onBind(Intent intent) {
@@ -39,11 +43,21 @@ public class QuickAddBubbleService extends Service {
   public void onCreate() {
     super.onCreate();
     startForegroundCompat();
+  }
 
-    if (!android.provider.Settings.canDrawOverlays(this)) {
-      stopSelf();
-      return;
+  @Override
+  public int onStartCommand(Intent intent, int flags, int startId) {
+    if (Settings.canDrawOverlays(this)) {
+      addBubble();
     }
+    // START_STICKY: if the system or a task manager kills the service, Android
+    // restarts it so the bubble stays available.
+    return START_STICKY;
+  }
+
+  /** Adds the overlay view once; safe to call on every start. */
+  private void addBubble() {
+    if (viewAdded || bubbleView != null) return;
 
     wm = (WindowManager) getSystemService(WINDOW_SERVICE);
 
@@ -101,8 +115,9 @@ public class QuickAddBubbleService extends Service {
     bubbleView = bubble;
     try {
       wm.addView(bubble, params);
+      viewAdded = true;
     } catch (Exception e) {
-      stopSelf();
+      bubbleView = null;
     }
   }
 
@@ -141,6 +156,8 @@ public class QuickAddBubbleService extends Service {
       } catch (Exception ignored) {
       }
     }
+    bubbleView = null;
+    viewAdded = false;
   }
 
   private int dp(int v) {

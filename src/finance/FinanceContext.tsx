@@ -45,6 +45,26 @@ export interface SheetSyncCfg {
 /** Choosable gesture that opens the quick-entry popup (Android). */
 export type QuickAddGesture = "none" | "bubble" | "shake";
 
+/** Minimal typing for the Android QuickAdd plugin (absent on web). */
+export interface QuickAddPlugin {
+  setGesture: (o: { gesture: string }) => Promise<unknown>;
+  canDrawOverlays: (o?: Record<string, never>) => Promise<{ granted?: boolean }>;
+  requestOverlayPermission: (o?: Record<string, never>) => Promise<unknown>;
+}
+
+/** Returns the Android QuickAdd bridge, or null when running on web. */
+export function getQuickAddPlugin(): QuickAddPlugin | null {
+  try {
+    const cap = (window as unknown as {
+      Capacitor?: { isNativePlatform?: () => boolean; Plugins?: { QuickAdd?: QuickAddPlugin } };
+    }).Capacitor;
+    if (cap?.isNativePlatform?.() && cap.Plugins?.QuickAdd) return cap.Plugins.QuickAdd;
+  } catch {
+    /* plugin only exists in the Android build */
+  }
+  return null;
+}
+
 const CONVEX_URL: string =
   (import.meta.env.VITE_CONVEX_URL as string | undefined) ?? "";
 
@@ -212,16 +232,7 @@ function Inner({ children }: { children: React.ReactNode }) {
 
   // push gesture choice into the Android layer (bubble / shake service)
   useEffect(() => {
-    try {
-      const cap = (window as unknown as {
-        Capacitor?: { isNativePlatform?: () => boolean; Plugins?: { QuickAdd?: { setGesture: (o: { gesture: string }) => Promise<unknown> } } };
-      }).Capacitor;
-      if (cap?.isNativePlatform?.() && cap.Plugins?.QuickAdd) {
-        cap.Plugins.QuickAdd.setGesture({ gesture: quickAddGesture });
-      }
-    } catch {
-      /* plugin only exists in the Android build */
-    }
+    getQuickAddPlugin()?.setGesture({ gesture: quickAddGesture }).catch(() => {});
   }, [quickAddGesture]);
   const [tick, setTick] = useState(0);
 

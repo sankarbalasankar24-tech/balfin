@@ -44,10 +44,13 @@
             android:taskAffinity=""
             android:theme="@style/QuickAddTheme" />
 
-        <!-- Floating bubble that opens the quick-add popup. -->
+        <!-- Floating bubble that opens the quick-add popup.
+             stopWithTask=false keeps it alive after "clean all"; the boot
+             receiver below restarts it after device reboot. -->
         <service
             android:name=".QuickAddBubbleService"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
@@ -58,11 +61,23 @@
         <service
             android:name=".ShakeGestureService"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Shake gesture detection to open the quick entry popup." />
         </service>
+
+        <!-- Bring the quick-add bubble / shake detector back after reboot. -->
+        <receiver
+            android:name=".QuickAddBootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -82,4 +97,5 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 </manifest>

@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useFinance } from "./FinanceContext";
 import { CatIcon } from "./icons";
 import { rememberEntry, useSuggestions, topNotes } from "./suggest";
-import { X, Delete, Wallet, Check } from "lucide-react";
+import { X, Delete, Wallet, Check, Clock } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -23,6 +23,13 @@ const CAT_TINTS = [
   "text-tertiary",
 ];
 
+/** Format a timestamp as a local `datetime-local` value (YYYY-MM-DDTHH:mm). */
+const fmtLocal = (ms: number) => {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 export default function QuickEntry({ open, onClose, editId, initialKind, variant = "sheet" }: Props) {
   const { categories, accounts, addTxn, updateTxn, transactions } = useFinance();
   const { noteSuggestions, subSuggestions, refresh: refreshMem } = useSuggestions();
@@ -34,9 +41,11 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
   const [sub, setSub] = useState<string | null>(null);
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
   const [note, setNote] = useState("");
+  const [dateStr, setDateStr] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [wasOpen, setWasOpen] = useState(false);
+  const acctTouched = useRef(false);
 
   if (open && !wasOpen) {
     setWasOpen(true);
@@ -48,16 +57,32 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
       setSub(editing.subcategory ?? null);
       setAccountId(editing.accountId);
       setNote(editing.note ?? "");
+      setDateStr(fmtLocal(editing.date));
     } else {
       setKind(initialKind ?? "expense");
       setAmount("");
       setCatId(null);
       setSub(null);
       setNote("");
+      setDateStr(fmtLocal(Date.now()));
+      // Default account: Gpay if it exists, else the first account.
+      const gpay = accounts.find((a) => /gpay/i.test(a.name));
+      setAccountId(gpay?._id ?? accounts[0]?._id);
     }
+    acctTouched.current = false;
   } else if (!open && wasOpen) {
     setWasOpen(false);
   }
+
+  // Accounts may still be loading when the sheet opens (e.g. the gesture
+  // popup webview) — pick the default once they arrive.
+  useEffect(() => {
+    if (!open || editId) return;
+    if (acctTouched.current || accountId) return;
+    const gpay = accounts.find((a) => /gpay/i.test(a.name));
+    const def = gpay?._id ?? accounts[0]?._id;
+    if (def) setAccountId(def);
+  }, [open, editId, accounts, accountId]);
 
   const cats = categories.filter((c) => c.type === kind);
   const activeCat = cats.find((c) => c._id === catId) ?? null;
@@ -81,7 +106,8 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
     if (!amt || amt <= 0 || !catId) return;
     setSaving(true);
     try {
-      const now = Date.now();
+      const parsed = dateStr ? new Date(dateStr).getTime() : NaN;
+      const ts = Number.isFinite(parsed) ? parsed : editing ? editing.date : Date.now();
       if (editing) {
         await updateTxn(editing._id, {
           kind,
@@ -90,7 +116,7 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
           subcategory: sub ?? undefined,
           accountId,
           note: note.trim() || undefined,
-          date: editing.date,
+          date: ts,
         });
       } else {
         await addTxn({
@@ -100,7 +126,7 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
           subcategory: sub ?? undefined,
           accountId,
           note: note.trim() || undefined,
-          date: now,
+          date: ts,
         });
       }
       rememberEntry({ note: note.trim() || undefined, subcategory: sub ?? undefined });
@@ -193,6 +219,17 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
                 ))}
               </div>
             )}
+            {/* date & time — defaults to right now, editable */}
+            <div className="mt-2 flex items-center gap-2 border-t border-white/10 px-1 pt-2">
+              <Clock size={13} className="flex-shrink-0 text-secondary" />
+              <input
+                type="datetime-local"
+                value={dateStr}
+                onChange={(e) => setDateStr(e.target.value)}
+                aria-label="Date and time"
+                className="w-full bg-transparent text-sm text-ink-soft outline-none [color-scheme:dark]"
+              />
+            </div>
           </div>
 
           {/* category capsules */}
@@ -265,7 +302,10 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
               <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-widest text-ink-faint">Account</p>
               <div className="no-scrollbar flex items-center gap-2 overflow-x-auto py-1">
                 <button
-                  onClick={() => setAccountId(undefined)}
+                  onClick={() => {
+                    acctTouched.current = true;
+                    setAccountId(undefined);
+                  }}
                   className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition active:scale-95 ${
                     !accountId ? "bg-primary text-[#003823]" : "border border-white/10 bg-card text-ink-soft"
                   }`}
@@ -275,7 +315,10 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
                 {accounts.map((a) => (
                   <button
                     key={a._id}
-                    onClick={() => setAccountId(a._id)}
+                    onClick={() => {
+                      acctTouched.current = true;
+                      setAccountId(a._id);
+                    }}
                     className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition active:scale-95 ${
                       accountId === a._id ? "bg-primary text-[#003823]" : "border border-white/10 bg-card text-ink-soft"
                     }`}

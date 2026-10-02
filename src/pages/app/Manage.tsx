@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useFinance, type QuickAddGesture } from "@/finance/FinanceContext";
+import { useCallback, useEffect, useState } from "react";
+import { useFinance, getQuickAddPlugin, type QuickAddGesture } from "@/finance/FinanceContext";
 import AppShell from "@/finance/AppShell";
 import { fmtMoney, CURRENCIES, setCurrency } from "@/finance/format";
 import { CatIcon } from "@/finance/icons";
@@ -27,6 +27,41 @@ export default function Manage() {
   const [tab, setTab] = useState<Tab>("categories");
   const [endpoint, setEndpoint] = useState(sheetSync?.endpoint ?? "");
   const [epSaved, setEpSaved] = useState(false);
+
+  // Overlay permission status for the floating bubble (Android only).
+  const [overlayGranted, setOverlayGranted] = useState<boolean | null>(null);
+  const isNative = !!getQuickAddPlugin();
+
+  const checkOverlay = useCallback(() => {
+    const qa = getQuickAddPlugin();
+    if (!qa) return;
+    qa.canDrawOverlays()
+      .then((r) => {
+        const granted = !!r?.granted;
+        setOverlayGranted(granted);
+        // (Re)start the bubble service once the permission is granted —
+        // it sits dormant while the permission was missing.
+        if (granted && quickAddGesture === "bubble") {
+          qa.setGesture({ gesture: quickAddGesture }).catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }, [quickAddGesture]);
+
+  useEffect(() => {
+    if (!isNative) return;
+    checkOverlay();
+    // Re-check when the user returns from the Android settings screen.
+    const onVis = () => {
+      if (document.visibilityState === "visible") checkOverlay();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [isNative, checkOverlay]);
+
+  const requestOverlay = () => {
+    getQuickAddPlugin()?.requestOverlayPermission({}).catch(() => {});
+  };
 
   const exportCsv = () => {
     const rows = [
@@ -136,9 +171,27 @@ export default function Manage() {
                 );
               })}
             </div>
-            {(quickAddGesture === "bubble" || quickAddGesture === "shake") && (
+            {quickAddGesture === "bubble" && isNative && overlayGranted === false && (
+              <div className="space-y-2 rounded-xl bg-surface-low px-3 py-2.5">
+                <p className="text-[11px] text-ink-faint">
+                  One-time permission needed: allow BalFin to <b className="text-ink-soft">"Display over other apps"</b> so the bubble can float above every app.
+                </p>
+                <button
+                  onClick={requestOverlay}
+                  className="flex w-full items-center justify-center gap-2 rounded-full bg-primary py-2.5 text-xs font-bold text-[#003823] active:scale-[0.98]"
+                >
+                  Allow "Display over other apps"
+                </button>
+              </div>
+            )}
+            {quickAddGesture === "bubble" && isNative && overlayGranted && (
+              <p className="flex items-center gap-1.5 rounded-xl bg-primary/10 px-3 py-2 text-[11px] font-medium text-primary-bright">
+                <CheckCircle2 size={13} /> Overlay allowed — the bubble floats over all apps and survives "clean all" and reboots.
+              </p>
+            )}
+            {quickAddGesture === "shake" && (
               <p className="rounded-xl bg-surface-low px-3 py-2 text-[11px] text-ink-faint">
-                First time: Android will ask for "Display over other apps" (bubble) — allow it once and the popup is ready everywhere.
+                Shake works out of the box — no permissions needed.
               </p>
             )}
           </div>
@@ -220,6 +273,10 @@ export default function Manage() {
     const [newName, setNewName] = useState("");
     const [subFor, setSubFor] = useState<string | null>(null);
     const [subName, setSubName] = useState("");
+    // Rename is a local draft committed on blur/Enter — writing straight to
+    // the database per keystroke made the input stutter and jump the cursor.
+    const [renaming, setRenaming] = useState<string | null>(null);
+    const [draft, setDraft] = useState("");
     const cats = categories.filter((c) => c.type === type);
 
     return (
@@ -237,11 +294,34 @@ export default function Manage() {
           <div key={c._id} className="rounded-2xl border border-white/5 bg-card p-4">
             <div className="flex items-center gap-2.5">
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-primary-bright"><CatIcon name={c.icon} size={14} /></span>
-              <input
-                value={c.name}
-                onChange={(e) => updateCategory(c._id, { name: e.target.value })}
-                className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1 py-0.5 text-sm font-semibold hover:border-white/10 focus:border-white/10"
-              />
+              {renaming === c._id ? (
+                <input
+                  autoFocus
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onBlur={() => {
+                    const v = draft.trim();
+                    if (v && v !== c.name) updateCategory(c._id, { name: v });
+                    setRenaming(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    if (e.key === "Escape") setRenaming(null);
+                  }}
+                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-surface-low px-1 py-0.5 text-sm font-semibold outline-none"
+                />
+              ) : (
+                <button
+                  onClick={() => {
+                    setRenaming(c._id);
+                    setDraft(c.name);
+                  }}
+                  aria-label={`Rename ${c.name}`}
+                  className="min-w-0 flex-1 truncate rounded-lg px-1 py-0.5 text-left text-sm font-semibold hover:text-primary-bright"
+                >
+                  {c.name}
+                </button>
+              )}
               <button onClick={() => deleteCategory(c._id)} className="text-ink-faint hover:text-tertiary-deep" aria-label="Delete category"><Trash2 size={14} /></button>
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
