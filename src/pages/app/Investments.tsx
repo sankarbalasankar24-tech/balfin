@@ -171,28 +171,28 @@ export default function Investments() {
           <div className="grid grid-cols-2 gap-2 pt-1">
             <div className="flex flex-col rounded-lg border border-white/5 bg-surface-low/70 p-2.5">
               <span className="text-[11px] text-ink-faint">All Time Return</span>
-              <div className={`mt-0.5 flex items-center gap-1 text-xs font-semibold ${(totalPL ?? 0) >= 0 ? "text-primary-bright" : "text-tertiary-deep"}`}>
+              <div className={`mt-0.5 flex flex-nowrap items-center gap-1 overflow-hidden whitespace-nowrap text-xs font-semibold ${(totalPL ?? 0) >= 0 ? "text-primary-bright" : "text-tertiary-deep"}`}>
                 {totalPL === null ? (
                   "—"
                 ) : (
                   <>
-                    {totalPL >= 0 ? <TrendingUp size={15} /> : <TrendingDown size={15} />}
-                    <span className="tabular">{fmtMoney(totalPL, { sign: true, compact: true })}</span>
-                    {totalPct !== null && <span className="text-[11px] font-bold">({totalPct >= 0 ? "+" : ""}{totalPct.toFixed(1)}%)</span>}
+                    {totalPL >= 0 ? <TrendingUp size={13} className="flex-shrink-0" /> : <TrendingDown size={13} className="flex-shrink-0" />}
+                    <span className="min-w-0 truncate tabular">{fmtMoney(totalPL, { sign: true, compact: true })}</span>
+                    {totalPct !== null && <span className="flex-shrink-0 text-[10px] font-bold">{totalPct >= 0 ? "+" : ""}{totalPct.toFixed(1)}%</span>}
                   </>
                 )}
               </div>
             </div>
             <div className="flex flex-col rounded-lg border border-white/5 bg-surface-low/70 p-2.5">
               <span className="text-[11px] text-ink-faint">Running CAGR</span>
-              <div className={`mt-0.5 flex items-center gap-1 text-xs font-semibold ${(cagr ?? 0) >= 0 ? "text-primary-bright" : "text-tertiary-deep"}`}>
+              <div className={`mt-0.5 flex flex-nowrap items-center gap-1 overflow-hidden whitespace-nowrap text-xs font-semibold ${(cagr ?? 0) >= 0 ? "text-primary-bright" : "text-tertiary-deep"}`}>
                 {cagr === null ? (
                   "—"
                 ) : (
                   <>
-                    <TrendingUp size={15} />
+                    <TrendingUp size={13} className="flex-shrink-0" />
                     <span className="tabular">{cagr >= 0 ? "+" : ""}{cagr.toFixed(1)}%</span>
-                    <span className="text-[10px] text-ink-faint">annualised</span>
+                    <span className="flex-shrink-0 text-[10px] text-ink-faint">annualised</span>
                   </>
                 )}
               </div>

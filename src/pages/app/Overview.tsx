@@ -167,7 +167,7 @@ export default function Overview() {
           </p>
 
           {/* toggle pills — content only shows when pressed */}
-          <div className="mt-3 flex items-center gap-1.5 border-t border-white/10 pt-3">
+          <div className="no-scrollbar mt-3 flex items-center gap-1.5 overflow-x-auto border-t border-white/10 pt-3">
             {(
               [
                 { key: "all", label: "All" },
@@ -180,7 +180,7 @@ export default function Overview() {
                 <button
                   key={t.key}
                   onClick={() => setScope(active && t.key !== "all" ? "all" : t.key)}
-                  className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition active:scale-[0.98] ${
+                  className={`flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition active:scale-[0.98] ${
                     active
                       ? "bg-primary text-[#003823] shadow-sm"
                       : "border border-white/10 bg-card text-ink-faint"

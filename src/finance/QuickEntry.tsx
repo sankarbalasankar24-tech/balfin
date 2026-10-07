@@ -42,6 +42,7 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
   const [note, setNote] = useState("");
   const [dateStr, setDateStr] = useState("");
+  const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [wasOpen, setWasOpen] = useState(false);
@@ -70,6 +71,7 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
       setAccountId(gpay?._id ?? accounts[0]?._id);
     }
     acctTouched.current = false;
+    setStep(0);
   } else if (!open && wasOpen) {
     setWasOpen(false);
   }
@@ -100,6 +102,9 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
   const backspace = () => setAmount((a) => (a.length > 1 ? a.slice(0, -1) : ""));
 
   if (!open) return null;
+
+  // Gesture popup renders the step-by-step wizard: amount → category → when.
+  const wizard = variant === "popup" && !editId;
 
   const save = async () => {
     const amt = parseFloat(amount);
@@ -155,12 +160,30 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
           </span>
         </div>
 
-        {/* header: title + kind toggle */}
+        {/* header: title + (wizard step pills | kind toggle) */}
         <div className="flex items-center justify-between px-5 pb-3 pt-2">
           <div>
             <h1 className="text-lg font-bold tracking-tight">{editing ? "Edit entry" : "Quick Entry"}</h1>
             <p className="text-xs text-ink-faint">{editing ? "Update this record" : "Tap to record instantly"}</p>
           </div>
+          {wizard ? (
+            <div className="flex items-center gap-1">
+              {["Amount", "Category", "When"].map((label, i) => (
+                <span
+                  key={label}
+                  className={`rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-wide ${
+                    i === step
+                      ? "bg-primary text-[#003823]"
+                      : i < step
+                        ? "bg-primary/20 text-primary-bright"
+                        : "bg-card-high text-ink-faint"
+                  }`}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+          ) : (
           <div className="inline-flex rounded-full border border-white/10 bg-surface-lowest p-1">
             {(["expense", "income"] as const).map((k) => (
               <button
@@ -178,6 +201,14 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
               </button>
             ))}
           </div>
+          )}
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="ml-1 flex-shrink-0 rounded-full bg-card-high p-1.5 text-ink-faint transition active:scale-90"
+          >
+            <X size={16} />
+          </button>
         </div>
 
         <div className="no-scrollbar flex-1 space-y-3 overflow-y-auto px-5 pb-2">
@@ -198,6 +229,7 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
               <span className="ml-1 inline-block h-8 w-0.5 animate-pulse rounded-full bg-primary-bright" />
             </div>
             {/* note with autosuggest */}
+            {(!wizard || step === 2) && (
             <div className="mt-2 flex items-center gap-2 border-t border-white/10 px-1 pt-2">
               <input
                 value={note}
@@ -206,7 +238,8 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
                 className="w-full bg-transparent text-sm outline-none placeholder:text-ink-faint"
               />
             </div>
-            {noteHits.length > 0 && (
+            )}
+            {noteHits.length > 0 && (!wizard || step === 2) && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {noteHits.map((n) => (
                   <button
@@ -220,6 +253,7 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
               </div>
             )}
             {/* date & time — defaults to right now, editable */}
+            {(!wizard || step === 2) && (
             <div className="mt-2 flex items-center gap-2 border-t border-white/10 px-1 pt-2">
               <Clock size={13} className="flex-shrink-0 text-secondary" />
               <input
@@ -230,9 +264,34 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
                 className="w-full bg-transparent text-sm text-ink-soft outline-none [color-scheme:dark]"
               />
             </div>
+            )}
           </div>
 
+          {/* kind toggle lives here in wizard mode (step 1) */}
+          {wizard && step === 1 && (
+            <div className="flex justify-center">
+              <div className="inline-flex rounded-full border border-white/10 bg-surface-lowest p-1">
+                {(["expense", "income"] as const).map((k) => (
+                  <button
+                    key={k}
+                    onClick={() => {
+                      setKind(k);
+                      setCatId(null);
+                      setSub(null);
+                    }}
+                    className={`rounded-full px-4 py-1.5 text-xs font-semibold capitalize transition ${
+                      kind === k ? "bg-primary text-[#003823]" : "text-ink-faint"
+                    }`}
+                  >
+                    {k}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* category capsules */}
+          {(!wizard || step === 1) && (
           <div>
             <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-widest text-ink-faint">
               Select category
@@ -259,9 +318,10 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
               ))}
             </div>
           </div>
+          )}
 
           {/* subcategory capsules + suggestions */}
-          {(activeCat || subHits.length > 0) && (
+          {(!wizard || step === 1) && (activeCat || subHits.length > 0) && (
             <div>
               <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-widest text-ink-faint">
                 Subcategory
@@ -297,7 +357,7 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
           )}
 
           {/* account capsules */}
-          {accounts.length > 0 && (
+          {(!wizard || step === 2) && accounts.length > 0 && (
             <div>
               <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-widest text-ink-faint">Account</p>
               <div className="no-scrollbar flex items-center gap-2 overflow-x-auto py-1">
@@ -331,6 +391,7 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
           )}
 
           {/* tactile numpad */}
+          {(!wizard || step === 0) && (
           <div className="grid grid-cols-3 gap-2 pb-1 pt-1">
             {["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0"].map((d) => (
               <button
@@ -349,20 +410,39 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
               <Delete size={22} />
             </button>
           </div>
+          )}
         </div>
 
-        {/* footer */}
-        <div className="flex flex-col gap-2 border-t border-white/10 bg-surface-low px-5 pb-6 pt-2">
-          <button
-            disabled={!amount || !catId || saving || saved}
-            onClick={save}
-            className={`flex h-12 w-full items-center justify-center gap-2 rounded-full text-sm font-bold shadow-[0_8px_24px_-4px_rgba(0,200,136,0.35)] transition active:scale-[0.98] disabled:opacity-40 ${
-              saved ? "bg-primary-bright text-[#002113]" : "bg-primary text-[#003823]"
-            }`}
-          >
-            {saved ? <Check size={18} /> : <X size={0} className="hidden" />}
-            {saved ? "Entry logged!" : editing ? "Save changes" : `Save ${kind}`}
-          </button>
+        {/* footer: wizard Back/Next or single save */}
+        <div className="flex gap-2 border-t border-white/10 bg-surface-low px-5 pb-6 pt-2">
+          {wizard && step > 0 && (
+            <button
+              onClick={() => setStep(step - 1)}
+              className="rounded-full border border-white/10 px-5 text-sm font-semibold text-ink-soft active:scale-95"
+            >
+              Back
+            </button>
+          )}
+          {wizard && step < 2 ? (
+            <button
+              onClick={() => setStep(step + 1)}
+              disabled={step === 0 ? !amount : !catId}
+              className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-primary text-sm font-bold text-[#003823] shadow-[0_8px_24px_-4px_rgba(0,200,136,0.35)] transition active:scale-[0.98] disabled:opacity-40"
+            >
+              Next — {step === 0 ? "category" : "date & note"}
+            </button>
+          ) : (
+            <button
+              disabled={!amount || !catId || saving || saved}
+              onClick={save}
+              className={`flex h-12 flex-1 items-center justify-center gap-2 rounded-full text-sm font-bold shadow-[0_8px_24px_-4px_rgba(0,200,136,0.35)] transition active:scale-[0.98] disabled:opacity-40 ${
+                saved ? "bg-primary-bright text-[#002113]" : "bg-primary text-[#003823]"
+              }`}
+            >
+              {saved ? <Check size={18} /> : <X size={0} className="hidden" />}
+              {saved ? "Entry logged!" : editing ? "Save changes" : `Save ${kind}`}
+            </button>
+          )}
         </div>
       </section>
     </div>

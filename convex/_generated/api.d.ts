@@ -11,6 +11,7 @@
 import type * as accounts from "../accounts.js";
 import type * as budgets from "../budgets.js";
 import type * as categories from "../categories.js";
+import type * as crons from "../crons.js";
 import type * as defaults from "../defaults.js";
 import type * as deposits from "../deposits.js";
 import type * as market from "../market.js";
@@ -29,6 +30,7 @@ declare const fullApi: ApiFromModules<{
   accounts: typeof accounts;
   budgets: typeof budgets;
   categories: typeof categories;
+  crons: typeof crons;
   defaults: typeof defaults;
   deposits: typeof deposits;
   market: typeof market;

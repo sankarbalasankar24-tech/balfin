@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
 import android.provider.Settings;
 
 import com.getcapacitor.JSObject;
@@ -44,9 +45,11 @@ public class QuickAddTogglePlugin extends Plugin {
     // shake needs the motion service; bubble needs a foreground service token.
     Intent shake = new Intent(getContext(), ShakeGestureService.class);
     Intent bubble = new Intent(getContext(), QuickAddBubbleService.class);
+    Intent volume = new Intent(getContext(), VolumeGestureService.class);
 
     boolean wantShake = "shake".equals(gesture) || "both".equals(gesture);
     boolean wantBubble = "bubble".equals(gesture) || "both".equals(gesture);
+    boolean wantVolume = "volume".equals(gesture) || "both".equals(gesture);
 
     if (wantShake) {
       try {
@@ -67,6 +70,70 @@ public class QuickAddTogglePlugin extends Plugin {
     } else {
       getContext().stopService(bubble);
     }
+
+    if (wantVolume) {
+      try {
+        if (Build.VERSION.SDK_INT >= 26) getContext().startForegroundService(volume);
+        else getContext().startService(volume);
+      } catch (Exception ignored) {
+      }
+    } else {
+      getContext().stopService(volume);
+    }
+  }
+
+  @PluginMethod
+  public void getStatus(PluginCall call) {
+    JSObject ret = new JSObject();
+    Context ctx = getContext();
+    ret.put("gesture", ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getString(KEY_GESTURE, "bubble"));
+    ret.put("overlay", Settings.canDrawOverlays(ctx));
+    ret.put("bubble", QuickAddBubbleService.running);
+    ret.put("shake", ShakeGestureService.running);
+    ret.put("volume", VolumeGestureService.running);
+    PowerManager pm = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
+    ret.put("batteryOk", pm != null && pm.isIgnoringBatteryOptimizations(ctx.getPackageName()));
+    call.resolve(ret);
+  }
+
+  @PluginMethod
+  public void restartServices(PluginCall call) {
+    String gesture = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getString(KEY_GESTURE, "bubble");
+    applyGesture(gesture);
+    call.resolve();
+  }
+
+  @PluginMethod
+  public void isIgnoringBatteryOptimizations(PluginCall call) {
+    JSObject ret = new JSObject();
+    PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+    ret.put("granted", pm != null && pm.isIgnoringBatteryOptimizations(getContext().getPackageName()));
+    call.resolve(ret);
+  }
+
+  @PluginMethod
+  public void requestIgnoreBatteryOptimizations(PluginCall call) {
+    Context ctx = getContext();
+    PowerManager pm = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
+    if (pm != null && !pm.isIgnoringBatteryOptimizations(ctx.getPackageName())) {
+      try {
+        Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+            Uri.parse("package:" + ctx.getPackageName()));
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        ctx.startActivity(intent);
+      } catch (Exception ignored) {
+        // OEM without the intent — fall back to the general list.
+        try {
+          Intent intent = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+          intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+          ctx.startActivity(intent);
+        } catch (Exception ignoredAgain) {
+        }
+      }
+    }
+    call.resolve();
   }
 
   @PluginMethod

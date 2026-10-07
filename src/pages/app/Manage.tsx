@@ -1,20 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
-import { useFinance, getQuickAddPlugin, type QuickAddGesture } from "@/finance/FinanceContext";
+import { useFinance, getQuickAddPlugin, type QuickAddGesture, type SheetBackupFrequency } from "@/finance/FinanceContext";
 import AppShell from "@/finance/AppShell";
 import { fmtMoney, CURRENCIES, setCurrency } from "@/finance/format";
 import { CatIcon } from "@/finance/icons";
 import {
   Plus, Trash2, Download, Building2, X, FileSpreadsheet,
-  Pencil, Vibrate, Hand, Ban, RefreshCw, CheckCircle2, AlertCircle, ExternalLink,
+  Pencil, Vibrate, Hand, Ban, RefreshCw, CheckCircle2, AlertCircle, ExternalLink, Volume2,
 } from "lucide-react";
 
 type Tab = "categories" | "accounts" | "preferences";
 
 const GESTURES: Array<{ key: QuickAddGesture; label: string; desc: string; icon: React.ComponentType<{ size?: number }> }> = [
   { key: "bubble", label: "Floating bubble", desc: "Draggable mint bubble over any app — tap it to quick-add", icon: Hand },
+  { key: "volume", label: "Volume double-tap", desc: "Double-press volume-up on any screen to pop quick entry", icon: Volume2 },
   { key: "shake", label: "Shake phone", desc: "Shake the device any time to pop quick entry", icon: Vibrate },
   { key: "none", label: "Off", desc: "Open quick entry only from inside the app", icon: Ban },
 ];
+
+interface QaStatus {
+  bubble: boolean;
+  shake: boolean;
+  volume: boolean;
+  batteryOk: boolean;
+}
 
 export default function Manage() {
   const {
@@ -22,17 +30,19 @@ export default function Manage() {
     addSub, deleteSub, addAccount, updateAccount, deleteAccount,
     currency, setCurrencyPref, catName,
     quickAddGesture, setQuickAddGesture,
-    sheetSync, setSheetEndpoint, syncSheets, sheetsSyncing,
+    sheetSync, setSheetEndpoint, setBackupFrequency, syncSheets, sheetsSyncing,
   } = useFinance();
   const [tab, setTab] = useState<Tab>("categories");
   const [endpoint, setEndpoint] = useState(sheetSync?.endpoint ?? "");
   const [epSaved, setEpSaved] = useState(false);
+  const backupFreq = (sheetSync?.backupFrequency as SheetBackupFrequency | undefined) ?? "daily";
 
-  // Overlay permission status for the floating bubble (Android only).
+  // Overlay permission + native service/battery status for the quick-add engine.
   const [overlayGranted, setOverlayGranted] = useState<boolean | null>(null);
+  const [qaStatus, setQaStatus] = useState<QaStatus | null>(null);
   const isNative = !!getQuickAddPlugin();
 
-  const checkOverlay = useCallback(() => {
+  const refreshQa = useCallback(() => {
     const qa = getQuickAddPlugin();
     if (!qa) return;
     qa.canDrawOverlays()
@@ -46,21 +56,33 @@ export default function Manage() {
         }
       })
       .catch(() => {});
+    qa.getStatus()
+      .then((s) => setQaStatus({ bubble: !!s.bubble, shake: !!s.shake, volume: !!s.volume, batteryOk: !!s.batteryOk }))
+      .catch(() => {});
   }, [quickAddGesture]);
 
   useEffect(() => {
     if (!isNative) return;
-    checkOverlay();
-    // Re-check when the user returns from the Android settings screen.
+    refreshQa();
+    // Re-check when the user returns from an Android settings screen.
     const onVis = () => {
-      if (document.visibilityState === "visible") checkOverlay();
+      if (document.visibilityState === "visible") refreshQa();
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [isNative, checkOverlay]);
+  }, [isNative, refreshQa]);
 
   const requestOverlay = () => {
     getQuickAddPlugin()?.requestOverlayPermission({}).catch(() => {});
+  };
+
+  const restartQa = () => {
+    getQuickAddPlugin()?.restartServices({}).catch(() => {});
+    setTimeout(refreshQa, 700);
+  };
+
+  const requestBattery = () => {
+    getQuickAddPlugin()?.requestIgnoreBatteryOptimizations({}).catch(() => {});
   };
 
   const exportCsv = () => {
@@ -189,10 +211,49 @@ export default function Manage() {
                 <CheckCircle2 size={13} /> Overlay allowed — the bubble floats over all apps and survives "clean all" and reboots.
               </p>
             )}
+            {quickAddGesture === "volume" && (
+              <p className="rounded-xl bg-surface-low px-3 py-2 text-[11px] text-ink-faint">
+                Double-press volume-up while the screen is on — works from any app.
+              </p>
+            )}
             {quickAddGesture === "shake" && (
               <p className="rounded-xl bg-surface-low px-3 py-2 text-[11px] text-ink-faint">
                 Shake works out of the box — no permissions needed.
               </p>
+            )}
+
+            {/* native engine diagnostics: what's actually running on the phone */}
+            {isNative && (
+              <div className="space-y-2 rounded-xl bg-surface-low px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <StatusChip label="Overlay" ok={overlayGranted === true} />
+                  {qaStatus && <StatusChip label="Bubble" ok={qaStatus.bubble} />}
+                  {qaStatus && quickAddGesture === "shake" && <StatusChip label="Shake" ok={qaStatus.shake} />}
+                  {qaStatus && quickAddGesture === "volume" && <StatusChip label="Volume" ok={qaStatus.volume} />}
+                  {qaStatus && <StatusChip label="Battery" ok={qaStatus.batteryOk} warnOnly />}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={restartQa}
+                    className="flex-1 rounded-full border border-white/10 py-2 text-[11px] font-semibold text-ink-soft active:scale-[0.98]"
+                  >
+                    Restart services
+                  </button>
+                  {qaStatus && !qaStatus.batteryOk && (
+                    <button
+                      onClick={requestBattery}
+                      className="flex-1 rounded-full bg-secondary-deep py-2 text-[11px] font-bold text-white active:scale-[0.98]"
+                    >
+                      Allow background
+                    </button>
+                  )}
+                </div>
+                {qaStatus && !qaStatus.batteryOk && (
+                  <p className="text-[10px] leading-snug text-ink-faint">
+                    Motorola and similar phones stop background features to save battery — "Allow background" keeps the bubble and gestures alive.
+                  </p>
+                )}
+              </div>
             )}
           </div>
 
@@ -207,12 +268,25 @@ export default function Manage() {
             <p className="text-[11px] text-ink-faint">
               Every entry is pushed automatically to your linked sheet — tabulated with Debit/Credit columns and a Monthly Summary tab.
             </p>
-            <ol className="space-y-1 rounded-xl bg-surface-low px-3 py-2.5 text-[11px] text-ink-soft">
-              <li>1. Open your Google Sheet → Extensions → Apps Script</li>
-              <li>2. Paste the script from <code className="text-primary-bright">google-apps-script/Code.gs</code> in the app repo</li>
-              <li>3. Deploy → Web app (execute as <b>Me</b>, access <b>Anyone</b>)</li>
-              <li>4. Paste the <b>.../exec</b> URL below</li>
-            </ol>
+
+            {/* scheduled backup cadence */}
+            <div className="flex items-center justify-between rounded-xl bg-surface-low px-3 py-2">
+              <span className="text-[11px] font-semibold text-ink-soft">Auto backup</span>
+              <div className="inline-flex rounded-full bg-card p-1">
+                {(["daily", "weekly", "monthly"] as SheetBackupFrequency[]).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setBackupFrequency(f)}
+                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold capitalize transition ${
+                      backupFreq === f ? "bg-primary text-[#003823]" : "text-ink-faint"
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex gap-2">
               <input
                 value={endpoint}
@@ -496,5 +570,21 @@ function AccountRow({
       <button onClick={onStartEdit} className="text-ink-faint hover:text-primary" aria-label="Edit account"><Pencil size={15} /></button>
       <button onClick={onDelete} className="text-ink-faint hover:text-tertiary-deep" aria-label="Delete account"><X size={15} /></button>
     </div>
+  );
+}
+
+function StatusChip({ label, ok, warnOnly }: { label: string; ok: boolean; warnOnly?: boolean }) {
+  return (
+    <span
+      className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+        ok
+          ? "bg-primary/15 text-primary-bright"
+          : warnOnly
+            ? "bg-secondary-deep/30 text-secondary"
+            : "bg-tertiary-deep/15 text-tertiary"
+      }`}
+    >
+      {ok ? <CheckCircle2 size={10} /> : <AlertCircle size={10} />} {label}
+    </span>
   );
 }

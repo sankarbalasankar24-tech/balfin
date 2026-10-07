@@ -23,9 +23,14 @@ public class ShakeGestureService extends Service implements SensorEventListener 
   private static final int NOTIF_ID = 4713;
 
   // shake tuning: force threshold, gap between shakes, shakes to trigger
-  private static final float SHAKE_THRESHOLD_GRAVITY = 2.7f;
+  // (relaxed so lighter shakes register on phones with stiff sensors)
+  private static final float SHAKE_THRESHOLD_GRAVITY = 2.4f;
   private static final int SHAKE_SLOP_MS = 350;
   private static final int SHAKE_COUNT_TO_TRIGGER = 2;
+  private static final long SHAKE_WINDOW_MS = 1500;
+
+  /** Set in onCreate/onDestroy so the plugin can report engine status. */
+  public static volatile boolean running = false;
 
   private SensorManager sensorManager;
   private Sensor accelerometer;
@@ -43,6 +48,7 @@ public class ShakeGestureService extends Service implements SensorEventListener 
   public void onCreate() {
     super.onCreate();
     startForegroundCompat();
+    running = true;
     sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
     if (sensorManager != null) {
       accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
@@ -76,7 +82,7 @@ public class ShakeGestureService extends Service implements SensorEventListener 
     if (now - lastShakeAt < SHAKE_SLOP_MS) return;
     lastShakeAt = now;
 
-    if (now - firstShakeAt > 1200) {
+    if (now - firstShakeAt > SHAKE_WINDOW_MS) {
       shakeCount = 0;
       firstShakeAt = now;
     }
@@ -99,6 +105,7 @@ public class ShakeGestureService extends Service implements SensorEventListener 
   @Override
   public void onDestroy() {
     super.onDestroy();
+    running = false;
     if (sensorManager != null) sensorManager.unregisterListener(this);
   }
 

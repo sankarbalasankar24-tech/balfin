@@ -25,6 +25,7 @@ public class QuickAddBootReceiver extends BroadcastReceiver {
 
     boolean wantShake = "shake".equals(gesture) || "both".equals(gesture);
     boolean wantBubble = "bubble".equals(gesture) || "both".equals(gesture);
+    boolean wantVolume = "volume".equals(gesture) || "both".equals(gesture);
     try {
       if (wantShake) {
         Intent shake = new Intent(context, ShakeGestureService.class);
@@ -35,6 +36,11 @@ public class QuickAddBootReceiver extends BroadcastReceiver {
         Intent bubble = new Intent(context, QuickAddBubbleService.class);
         if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(bubble);
         else context.startService(bubble);
+      }
+      if (wantVolume) {
+        Intent volume = new Intent(context, VolumeGestureService.class);
+        if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(volume);
+        else context.startService(volume);
       }
     } catch (Exception ignored) {
       // Rare: FGS-from-boot restrictions on some OEM skins. The next app open

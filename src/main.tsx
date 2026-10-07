@@ -19,6 +19,8 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/" element={<Navigate to="/app" replace />} />
           <Route path="/intro" element={<Landing />} />
           <Route path="/app" element={<Overview />} />
+          {/* Native gesture popup: Overview + the quick-entry wizard on top. */}
+          <Route path="/app/quick-add" element={<Overview />} />
           <Route path="/app/ledger" element={<Ledger />} />
           <Route path="/app/invest" element={<Investments />} />
           <Route path="/app/budgets" element={<Budgets />} />

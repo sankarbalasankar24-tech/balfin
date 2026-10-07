@@ -34,6 +34,9 @@ public class QuickAddBubbleService extends Service {
   private View bubbleView;
   private boolean viewAdded = false;
 
+  /** Set in onCreate/onDestroy so the plugin can report engine status. */
+  public static volatile boolean running = false;
+
   @Override
   public IBinder onBind(Intent intent) {
     return null;
@@ -43,6 +46,7 @@ public class QuickAddBubbleService extends Service {
   public void onCreate() {
     super.onCreate();
     startForegroundCompat();
+    running = true;
   }
 
   @Override
@@ -150,6 +154,7 @@ public class QuickAddBubbleService extends Service {
   @Override
   public void onDestroy() {
     super.onDestroy();
+    running = false;
     if (bubbleView != null && wm != null) {
       try {
         wm.removeView(bubbleView);

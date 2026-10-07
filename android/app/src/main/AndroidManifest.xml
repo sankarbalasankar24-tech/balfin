@@ -68,6 +68,17 @@
                 android:value="Shake gesture detection to open the quick entry popup." />
         </service>
 
+        <!-- Volume double-press detection for the quick-add popup. -->
+        <service
+            android:name=".VolumeGestureService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Volume double-press gesture detection to open the quick entry popup." />
+        </service>
+
         <!-- Bring the quick-add bubble / shake detector back after reboot. -->
         <receiver
             android:name=".QuickAddBootReceiver"
@@ -98,4 +109,5 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 </manifest>

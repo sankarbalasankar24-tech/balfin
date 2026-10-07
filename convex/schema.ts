@@ -108,5 +108,6 @@ export default defineSchema({
     lastPushedAt: v.optional(v.number()),
     lastStatus: v.optional(v.string()), // "pending" | "synced" | "error"
     lastError: v.optional(v.string()),
+    backupFrequency: v.optional(v.string()), // "daily" | "weekly" | "monthly"
   }),
 });

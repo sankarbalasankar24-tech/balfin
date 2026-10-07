@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { ConvexProvider, ConvexReactClient, useQuery, useMutation, useAction, useConvex } from "convex/react";
@@ -40,16 +41,29 @@ export interface SheetSyncCfg {
   lastStatus?: string;
   lastError?: string;
   lastPushedAt?: number;
+  backupFrequency?: string;
 }
 
 /** Choosable gesture that opens the quick-entry popup (Android). */
-export type QuickAddGesture = "none" | "bubble" | "shake";
+export type QuickAddGesture = "none" | "bubble" | "shake" | "volume";
+export type SheetBackupFrequency = "daily" | "weekly" | "monthly";
 
 /** Minimal typing for the Android QuickAdd plugin (absent on web). */
 export interface QuickAddPlugin {
   setGesture: (o: { gesture: string }) => Promise<unknown>;
   canDrawOverlays: (o?: Record<string, never>) => Promise<{ granted?: boolean }>;
   requestOverlayPermission: (o?: Record<string, never>) => Promise<unknown>;
+  getStatus: (o?: Record<string, never>) => Promise<{
+    gesture?: string;
+    overlay?: boolean;
+    bubble?: boolean;
+    shake?: boolean;
+    volume?: boolean;
+    batteryOk?: boolean;
+  }>;
+  restartServices: (o?: Record<string, never>) => Promise<unknown>;
+  isIgnoringBatteryOptimizations: (o?: Record<string, never>) => Promise<{ granted?: boolean }>;
+  requestIgnoreBatteryOptimizations: (o?: Record<string, never>) => Promise<unknown>;
 }
 
 /** Returns the Android QuickAdd bridge, or null when running on web. */
@@ -121,6 +135,7 @@ interface FinanceCtx {
   // Google Sheets auto-sync
   sheetSync: SheetSyncCfg | null;
   setSheetEndpoint: (url: string) => Promise<void>;
+  setBackupFrequency: (f: SheetBackupFrequency) => Promise<void>;
   syncSheets: () => Promise<"synced" | "error">;
   sheetsSyncing: boolean;
   // mutations
@@ -188,6 +203,36 @@ function usePref<T>(key: string, initial: T) {
   return [val, set] as const;
 }
 
+/**
+ * Stale-while-revalidate for the Convex lists: the first renders after an app
+ * open read the last snapshot from localStorage so the UI paints instantly
+ * instead of idling on "Connecting to your database…". Live data replaces the
+ * snapshot as soon as the network responds.
+ */
+function useCachedList<T>(raw: T[] | undefined, key: string): T[] {
+  const fallback = useRef<T[] | undefined>(undefined);
+  const loaded = useRef(false);
+  if (!loaded.current) {
+    loaded.current = true;
+    try {
+      const s = localStorage.getItem(`balfin.cache.${key}`);
+      if (s !== null) fallback.current = JSON.parse(s) as T[];
+    } catch {
+      /* no usable cache yet */
+    }
+  }
+  useEffect(() => {
+    if (raw === undefined) return;
+    fallback.current = raw;
+    try {
+      localStorage.setItem(`balfin.cache.${key}`, JSON.stringify(raw));
+    } catch {
+      /* storage full — ignore */
+    }
+  }, [raw, key]);
+  return raw !== undefined ? raw : fallback.current ?? [];
+}
+
 function Inner({ children }: { children: React.ReactNode }) {
   const categoriesRaw = useQuery(api.categories.list);
   const transactionsRaw = useQuery(api.transactions.list, {});
@@ -200,24 +245,59 @@ function Inner({ children }: { children: React.ReactNode }) {
   const depositsRaw = useQuery(api.deposits.list);
   const depositFlowsRaw = useQuery(api.deposits.listFlows, {});
 
+  // Consider the app ready immediately when a previous session left caches —
+  // the cached lists below render while fresh data loads.
+  const hadCache = useRef<boolean | null>(null);
+  if (hadCache.current === null) {
+    hadCache.current = [
+      "categories",
+      "transactions",
+      "budgets",
+      "accounts",
+      "stocks",
+      "deposits",
+    ].every((k) => localStorage.getItem(`balfin.cache.${k}`) !== null);
+  }
   const ready =
-    categoriesRaw !== undefined &&
-    transactionsRaw !== undefined &&
-    budgetsRaw !== undefined &&
-    accountsRaw !== undefined &&
-    stocksRaw !== undefined &&
-    depositsRaw !== undefined;
+    hadCache.current ||
+    (categoriesRaw !== undefined &&
+      transactionsRaw !== undefined &&
+      budgetsRaw !== undefined &&
+      accountsRaw !== undefined &&
+      stocksRaw !== undefined &&
+      depositsRaw !== undefined);
 
-  const categories = categoriesRaw ?? [];
-  const transactions = (transactionsRaw ?? []) as unknown as TxnRow[];
-  const budgets = budgetsRaw ?? [];
-  const accounts = accountsRaw ?? [];
-  const stocks = (stocksRaw ?? []) as unknown as StockRow[];
-  const exits = (exitsRaw ?? []) as unknown as ExitRow[];
-  const dividends = (dividendsRaw ?? []) as unknown as DividendRow[];
-  const mutualFunds = (mutualFundsRaw ?? []) as unknown as MFRow[];
-  const deposits = (depositsRaw ?? []) as unknown as DepositRow[];
-  const depositFlows = (depositFlowsRaw ?? []) as unknown as DepositFlowRow[];
+  const categories = useCachedList(categoriesRaw, "categories");
+  const transactions = useCachedList(
+    transactionsRaw as unknown as TxnRow[] | undefined,
+    "transactions"
+  );
+  const budgets = useCachedList(budgetsRaw, "budgets");
+  const accounts = useCachedList(accountsRaw, "accounts");
+  const stocks = useCachedList(
+    stocksRaw as unknown as StockRow[] | undefined,
+    "stocks"
+  );
+  const exits = useCachedList(
+    exitsRaw as unknown as ExitRow[] | undefined,
+    "exits"
+  );
+  const dividends = useCachedList(
+    dividendsRaw as unknown as DividendRow[] | undefined,
+    "dividends"
+  );
+  const mutualFunds = useCachedList(
+    mutualFundsRaw as unknown as MFRow[] | undefined,
+    "mutualFunds"
+  );
+  const deposits = useCachedList(
+    depositsRaw as unknown as DepositRow[] | undefined,
+    "deposits"
+  );
+  const depositFlows = useCachedList(
+    depositFlowsRaw as unknown as DepositFlowRow[] | undefined,
+    "depositFlows"
+  );
 
   const mSeedDefaults = useMutation(api.categories.seedDefaults);
   useEffect(() => {
@@ -326,6 +406,7 @@ function Inner({ children }: { children: React.ReactNode }) {
   const sheetCfgRaw = useQuery(api.sheets.getConfig);
   const sheetCfg = sheetCfgRaw as unknown as SheetSyncCfg | undefined;
   const mSetSheetEndpoint = useMutation(api.sheets.setEndpoint);
+  const mSetBackupFrequency = useMutation(api.sheets.setBackupFrequency);
   const aSyncSheets = useAction(api.sheets.syncNow);
   const [sheetsSyncing, setSheetsSyncing] = useState(false);
 
@@ -391,6 +472,9 @@ function Inner({ children }: { children: React.ReactNode }) {
     sheetSync: sheetCfg ?? null,
     setSheetEndpoint: async (url: string) => {
       await mSetSheetEndpoint({ endpoint: url });
+    },
+    setBackupFrequency: async (f) => {
+      await mSetBackupFrequency({ frequency: f });
     },
     syncSheets: async () => {
       setSheetsSyncing(true);

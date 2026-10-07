@@ -101,6 +101,13 @@ public class QuickAddActivity extends Activity {
     webView.loadUrl("https://localhost/index.html#/app/quick-add");
   }
 
+  @Override
+  public boolean onTouchEvent(android.view.MotionEvent event) {
+    // Tap on the dimmed area outside the card dismisses the popup.
+    if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) finish();
+    return super.onTouchEvent(event);
+  }
+
   class AssetLoaderClient extends WebViewClient {
     @Override
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
@@ -120,7 +127,10 @@ public class QuickAddActivity extends Activity {
           "document.body.style.background='transparent';" +
           "var h=document.querySelector('header');if(h)h.style.display='none';" +
           "var n=document.querySelector('nav');if(n)n.style.display='none';" +
-          "var f=document.querySelector('.fixed.bottom-24');if(f)f.style.display='none';",
+          "var f=document.querySelector('button[aria-label=\"Quick log\"]');if(f)f.style.display='none';" +
+          "if(!window.__balfinCloseHook){window.__balfinCloseHook=1;" +
+          "addEventListener('hashchange',function(){" +
+          "if(location.hash.indexOf('quick-add')===-1&&window.BalFinNative)BalFinNative.close();});}",
           null);
     }
   }

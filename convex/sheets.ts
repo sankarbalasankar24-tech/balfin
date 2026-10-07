@@ -24,6 +24,16 @@ export const setEndpoint = mutation({
   },
 });
 
+export const setBackupFrequency = mutation({
+  args: { frequency: v.string() },
+  handler: async (ctx, { frequency }) => {
+    const existing = await ctx.db.query("sheetSync").first();
+    const patch = { backupFrequency: frequency };
+    if (existing) await ctx.db.patch(existing._id, patch);
+    else await ctx.db.insert("sheetSync", patch);
+  },
+});
+
 export const markStatus = mutation({
   args: { status: v.string(), error: v.optional(v.string()) },
   handler: async (ctx, { status, error }) => {
@@ -210,6 +220,31 @@ export const pushToSheet = action({
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       throw new Error(`Sheets responded ${res.status}: ${text.slice(0, 200)}`);
+    }
+  },
+});
+
+// Scheduled auto-backup: a Convex cron (crons.ts) calls this every evening
+// IST; it pushes when today matches the user's chosen cadence.
+export const scheduledSync = action({
+  args: {},
+  handler: async (ctx) => {
+    const cfg = await ctx.runQuery(api.sheets.getConfig);
+    if (!cfg?.endpoint) return; // nothing linked yet
+    const freq = cfg.backupFrequency ?? "daily";
+    // Evaluate the cadence in IST (UTC+5:30) so "daily" means the same
+    // evening regardless of the deployment's clock.
+    const ist = new Date(Date.now() + 5.5 * 3600 * 1000);
+    const dow = ist.getUTCDay(); // 0 = Sunday
+    const dom = ist.getUTCDate(); // 1..31
+    if (freq === "weekly" && dow !== 0) return;
+    if (freq === "monthly" && dom !== 1) return;
+    try {
+      await ctx.runAction(api.sheets.pushToSheet, {});
+      await ctx.runMutation(api.sheets.markStatus, { status: "synced" });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await ctx.runMutation(api.sheets.markStatus, { status: "error", error: msg });
     }
   },
 });

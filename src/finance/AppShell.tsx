@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { NavLink as RRNavLink } from "react-router-dom";
+import { NavLink as RRNavLink, useLocation, useNavigate } from "react-router-dom";
 import { Home, PieChart, List, TrendingUp, Settings, Plus } from "lucide-react";
 import QuickEntry from "./QuickEntry";
 
@@ -13,55 +13,54 @@ const TABS: Array<{ to: string; label: string; icon: React.ComponentType<{ size?
 
 export default function AppShell({
   children,
-  title,
-  subtitle,
 }: {
   children: React.ReactNode;
-  title: string;
+  title?: string;
   subtitle?: string;
 }) {
-  const [entry, setEntry] = useState<{ open: boolean; editId: string | null; initialKind?: "expense" | "income" }>({
-    open: false,
+  // The gesture popup is route-driven: #/app/quick-add renders this shell
+  // with the step-by-step wizard open, so the native overlay window (and
+  // home-screen shortcuts) survive router redirects deterministically.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const quickAdd = location.pathname === "/app/quick-add";
+
+  const [entry, setEntry] = useState<{
+    open: boolean;
+    editId: string | null;
+    initialKind?: "expense" | "income";
+    popup?: boolean;
+  }>(() => ({
+    open: quickAdd,
     editId: null,
-  });
+    initialKind:
+      new URLSearchParams(location.search).get("kind") === "income" ? "income" : "expense",
+    popup: quickAdd,
+  }));
+
+  // React reuses this component across /app <-> /app/quick-add (same element
+  // type), so the route must also drive the state after mount.
+  useEffect(() => {
+    if (quickAdd) setEntry((e) => ({ ...e, open: true, popup: true, editId: null }));
+  }, [quickAdd]);
 
   const openEntry = (editId: string | null = null) =>
     setEntry({ open: true, editId });
   const openEntryWithKind = (kind: "expense" | "income") =>
     setEntry({ open: true, editId: null, initialKind: kind });
 
-  // Deep links (home-screen shortcuts): balfin://quick-add?kind=income
-  useEffect(() => {
-    const handler = () => {
-      const h = window.location.hash;
-      const match = h.match(/#\/app\/quick-add\?kind=(expense|income)/);
-      if (match) {
-        openEntryWithKind(match[1] as "expense" | "income");
-        window.history.replaceState(null, "", "#/app");
-      } else if (h.includes("quick-add")) {
-        openEntryWithKind("expense");
-        window.history.replaceState(null, "", "#/app");
-      }
-    };
-    handler();
-    window.addEventListener("hashchange", handler);
-    return () => window.removeEventListener("hashchange", handler);
-  }, []);
-
   return (
     <EntryEditContext.Provider value={{ openEntry, openEntryWithKind }}>
       <div className="mx-auto flex min-h-screen w-full max-w-lg flex-col">
-        <header className="sticky top-0 z-30 bg-background/90 px-4 pb-3 pt-4 backdrop-blur">
-          <h1 className="text-[26px] font-bold leading-8 tracking-tight">{title}</h1>
-          {subtitle && <p className="text-xs text-ink-soft">{subtitle}</p>}
-        </header>
-        <main className="flex-1 px-4 pb-28">{children}</main>
+        {/* No page title — the tab name in the bottom nav is enough. */}
+        <main className="flex-1 px-4 pb-32 pt-4">{children}</main>
 
-        {/* Quick Log pill — Level 3 elevation with emerald glow */}
+        {/* Quick Log pill — bottom-right for one-hand reach, clear of the nav */}
         <button
           onClick={() => openEntry()}
           aria-label="Quick log"
-          className="fixed bottom-24 right-1/2 z-40 flex h-12 translate-x-[max(50%,calc(50%-20rem))] items-center gap-1.5 rounded-full border border-primary/20 bg-primary px-5 text-sm font-bold text-[#003823] shadow-[0_12px_32px_-4px_rgba(0,200,136,0.35)] transition active:scale-95"
+          className="fixed right-4 z-40 flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary py-3 pl-4 pr-5 text-sm font-bold text-[#003823] shadow-[0_12px_32px_-4px_rgba(0,200,136,0.45)] transition active:scale-95"
+          style={{ bottom: "calc(5.25rem + env(safe-area-inset-bottom, 0px))" }}
         >
           <Plus size={18} strokeWidth={2.5} />
           Quick Log
@@ -84,7 +83,11 @@ export default function AppShell({
           open={entry.open}
           editId={entry.editId}
           initialKind={entry.initialKind}
-          onClose={() => setEntry({ open: false, editId: null })}
+          variant={entry.popup ? "popup" : "sheet"}
+          onClose={() => {
+            setEntry({ open: false, editId: null, popup: false });
+            if (quickAdd) navigate("/app", { replace: true });
+          }}
         />
       </div>
     </EntryEditContext.Provider>
@@ -125,7 +128,9 @@ export const EntryEditContext = React.createContext<{
   openEntryWithKind: (kind: "expense" | "income") => void;
 }>({
   openEntry: () => {},
-  openEntryWithKind: () => {},
+  openEntryWithKind: (kind: "expense" | "income") => {
+    void kind;
+  },
 });
 
 export function useEntryEdit() {
