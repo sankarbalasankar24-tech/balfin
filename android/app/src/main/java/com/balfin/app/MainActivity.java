@@ -15,9 +15,12 @@ public class MainActivity extends BridgeActivity {
 
   @Override
   public void onCreate(Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
+    // Capacitor requires custom plugins to be registered BEFORE
+    // super.onCreate — the bridge is built during that call and plugins
+    // registered after it never reach the WebView (no bubble, no prompts).
     registerPlugin(QuickAddTogglePlugin.class);
     registerPlugin(SecurityPlugin.class);
+    super.onCreate(savedInstanceState);
     // Hand the WebView's Convex URL to the daily summary notifier and arm
     // the 21:00 exact alarm (idempotent — re-arms every launch).
     bridge.getWebView().post(() -> bridge.getWebView().evaluateJavascript(

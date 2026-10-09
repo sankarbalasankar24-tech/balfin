@@ -247,6 +247,18 @@ export const pushToSheet = action({
       }
       throw new Error(`Sheets responded ${res.status}: ${text.slice(0, 160)}`);
     }
+    // The script answers 200 with JSON {ok:false,...} on script-side errors
+    // (e.g. authorisation never granted) — surface those instead of a false
+    // "sync successful".
+    try {
+      const out = JSON.parse(text) as { ok?: boolean; error?: string };
+      if (out && out.ok === false) {
+        throw new Error(`Sheet script rejected the push: ${out.error ?? "unknown error"}`);
+      }
+    } catch (err) {
+      if (err instanceof SyntaxError) return; // non-JSON 200 body: fine
+      throw err;
+    }
   },
 });
 
