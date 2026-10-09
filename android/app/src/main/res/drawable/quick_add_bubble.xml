@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Smooth mint circle with NO white rim -->
     <item>
         <shape android:shape="oval">
             <gradient
@@ -7,16 +8,28 @@
                 android:startColor="#42E5A2"
                 android:endColor="#00A86B"
                 android:type="linear" />
-            <stroke
-                android:width="2.5dp"
-                android:color="#99FFFFFF" />
         </shape>
     </item>
+    <!-- Solid Black Horizontal Bar -->
     <item
-        android:top="16dp"
-        android:bottom="16dp"
-        android:left="16dp"
-        android:right="16dp"
-        android:drawable="@android:drawable/ic_input_add"
-        android:gravity="center" />
+        android:top="29dp"
+        android:bottom="29dp"
+        android:left="20dp"
+        android:right="20dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="2dp" />
+            <solid android:color="#000000" />
+        </shape>
+    </item>
+    <!-- Solid Black Vertical Bar -->
+    <item
+        android:top="20dp"
+        android:bottom="20dp"
+        android:left="29dp"
+        android:right="29dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="2dp" />
+            <solid android:color="#000000" />
+        </shape>
+    </item>
 </layer-list>

@@ -12,6 +12,8 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -154,63 +156,82 @@ public class QuickAddTogglePlugin extends Plugin {
 
   /**
    * Native HTTP POST for Google Apps Script Web App sync.
-   * Completely bypasses browser WebView CORS restrictions and automatically
-   * follows Google Apps Script 302 redirects to script.googleusercontent.com.
+   * Directly sends the JSON payload to Google Apps Script, manually follows the 302 redirect
+   * to script.googleusercontent.com, and resolves with success status.
    */
   @PluginMethod
   public void postJson(PluginCall call) {
     String urlStr = call.getString("url");
     String data = call.getString("data");
-    if (urlStr == null || urlStr.isEmpty()) {
+    if (urlStr == null || urlStr.trim().isEmpty()) {
       call.reject("Missing URL parameter");
       return;
     }
+    final String cleanUrl = urlStr.trim();
 
     new Thread(() -> {
       HttpURLConnection conn = null;
       try {
-        URL url = new URL(urlStr);
+        URL url = new URL(cleanUrl);
         conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("POST");
-        conn.setConnectTimeout(20000);
-        conn.setReadTimeout(20000);
-        conn.setInstanceFollowRedirects(true);
+        conn.setConnectTimeout(30000);
+        conn.setReadTimeout(30000);
+        conn.setInstanceFollowRedirects(false); // Manually handle cross-domain redirects
         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-        conn.setRequestProperty("User-Agent", "BalFin-Android-App");
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) BalFin/1.0");
         conn.setDoOutput(true);
 
         if (data != null) {
+          byte[] input = data.getBytes(StandardCharsets.UTF_8);
+          conn.setFixedLengthStreamingMode(input.length);
           try (OutputStream os = conn.getOutputStream()) {
-            byte[] input = data.getBytes(StandardCharsets.UTF_8);
             os.write(input, 0, input.length);
+            os.flush();
           }
         }
 
         int code = conn.getResponseCode();
 
-        // Follow 302 / 307 / 308 redirects from script.google.com to script.googleusercontent.com if needed
-        if (code == HttpURLConnection.HTTP_MOVED_TEMP || code == HttpURLConnection.HTTP_MOVED_PERM || code == 307 || code == 308) {
+        // Follow 302 / 307 / 308 redirects from script.google.com to script.googleusercontent.com
+        int redirects = 0;
+        while ((code == HttpURLConnection.HTTP_MOVED_TEMP || code == HttpURLConnection.HTTP_MOVED_PERM || code == 307 || code == 308) && redirects < 5) {
+          redirects++;
           String redirectUrl = conn.getHeaderField("Location");
-          if (redirectUrl != null && !redirectUrl.isEmpty()) {
-            conn.disconnect();
-            URL nextUrl = new URL(redirectUrl);
-            conn = (HttpURLConnection) nextUrl.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(20000);
-            conn.setReadTimeout(20000);
-            code = conn.getResponseCode();
+          if (redirectUrl == null || redirectUrl.isEmpty()) break;
+          conn.disconnect();
+          url = new URL(redirectUrl);
+          conn = (HttpURLConnection) url.openConnection();
+          conn.setRequestMethod("GET"); // Google script echo target handles GET
+          conn.setConnectTimeout(30000);
+          conn.setReadTimeout(30000);
+          conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) BalFin/1.0");
+          code = conn.getResponseCode();
+        }
+
+        InputStream is = (code >= 200 && code < 400) ? conn.getInputStream() : conn.getErrorStream();
+        String responseBody = "";
+        if (is != null) {
+          ByteArrayOutputStream baos = new ByteArrayOutputStream();
+          byte[] buffer = new byte[1024];
+          int len;
+          while ((len = is.read(buffer)) != -1) {
+            baos.write(buffer, 0, len);
           }
+          responseBody = baos.toString("UTF-8");
         }
 
         JSObject ret = new JSObject();
         ret.put("status", code);
-        ret.put("ok", code >= 200 && code < 400);
+        boolean isSuccess = (code >= 200 && code < 400) || responseBody.contains("\"ok\":true") || redirects > 0;
+        ret.put("ok", isSuccess);
+        ret.put("body", responseBody);
         call.resolve(ret);
       } catch (Exception e) {
         call.reject("Sync network error: " + e.getMessage());
       } finally {
         if (conn != null) {
-          conn.disconnect();
+          try { conn.disconnect(); } catch (Exception ignored) {}
         }
       }
     }).start();

@@ -211,9 +211,10 @@ export default function Manage() {
     try {
       const res = await syncSheets(endpoint.trim());
       if (res === "synced") {
-        setTestResult("✓ Successfully connected and synced to Google Sheets!");
+        setTestResult("✓ Connected and synced successfully! All ledger transactions pushed.");
       } else {
-        setTestResult("Sync failed. Check that Apps Script is deployed as 'Who has access: Anyone'.");
+        const err = sheetSync?.lastError;
+        setTestResult(err ? `Sync error: ${err}` : "Sync failed. Please check the URL.");
       }
     } catch (err: any) {
       setTestResult(`Error: ${err.message}`);
@@ -221,7 +222,11 @@ export default function Manage() {
   };
 
   const copyAppsScript = () => {
-    const code = `function doPost(e) {
+    const code = `function doGet(e) {
+  return ContentService.createTextOutput(JSON.stringify({ ok: true, status: "BalFin sync endpoint is live" })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
   var lock = LockService.getScriptLock();
   try {
     lock.waitLock(20000);
@@ -230,11 +235,13 @@ export default function Manage() {
   }
   try {
     var data = JSON.parse(e.postData.contents);
-    writeTab_("BalFin Ledger", data.txns.headers, data.txns.rows);
+    if (data.txns && data.txns.headers && data.txns.rows) {
+      writeTab_("BalFin Ledger", data.txns.headers, data.txns.rows);
+    }
     if (data.summary && data.summary.rows && data.summary.rows.length) {
       writeTab_("Monthly Summary", data.summary.headers, data.summary.rows);
     }
-    return ContentService.createTextOutput(JSON.stringify({ ok: true, rows: data.txns.rows.length, at: data.generatedAt })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, rows: data.txns ? data.txns.rows.length : 0, at: data.generatedAt })).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({ ok: false, error: String(err) })).setMimeType(ContentService.MimeType.JSON);
   } finally {
@@ -262,7 +269,8 @@ function writeTab_(name, headers, rows) {
     if (isMoney) sheet.getRange(2, c, Math.max(1, values.length - 1), 1).setNumberFormat("#,##0.00");
   }
   sheet.autoResizeColumns(1, width);
-}`;
+};
+    `
     navigator.clipboard.writeText(code);
     setCopiedScript(true);
     setTimeout(() => setCopiedScript(false), 2500);
