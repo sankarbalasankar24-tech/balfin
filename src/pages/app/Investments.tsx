@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useFinance, type DepositRow, type DepositFlowRow } from "@/finance/FinanceContext";
 import AppShell from "@/finance/AppShell";
 import { fmtMoney, fmtDate } from "@/finance/format";
-import { summarizePosition, portfolioTotals, mfValue, type PositionSummary } from "@/finance/portfolio";
+import { summarizePosition, portfolioTotals, mfValue, allXirrFlows, xirr, type PositionSummary } from "@/finance/portfolio";
 import { RefreshCw, Plus, X, TrendingUp, TrendingDown, Search, Gift, Landmark, Clock } from "lucide-react";
 
 function localDateStr(ms = Date.now()): string {
@@ -74,6 +74,16 @@ export default function Investments() {
       ? (totalPL / (totals.investedAllTime + mfTotals.invested)) * 100
       : null;
   const cagr = totals.cagrPct;
+
+  // Extended IRR across every dated cash flow (buys, sells, dividends, MF
+  // flows, current valuations) — the most accurate annualized performance.
+  const xirrPct = useMemo(() => {
+    const flows = allXirrFlows(positions, mutualFunds, (f) =>
+      f.navSymbol ? quotes[f.navSymbol] ?? null : f.manualNav ?? null
+    );
+    return flows.length >= 2 ? xirr(flows) : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [positions, mutualFunds, quotes]);
 
   // allocation donut
   const alloc = useMemo(() => {
@@ -184,15 +194,18 @@ export default function Investments() {
               </div>
             </div>
             <div className="flex flex-col rounded-lg border border-white/5 bg-surface-low/70 p-2.5">
-              <span className="text-[11px] text-ink-faint">Running CAGR</span>
-              <div className={`mt-0.5 flex flex-nowrap items-center gap-1 overflow-hidden whitespace-nowrap text-xs font-semibold ${(cagr ?? 0) >= 0 ? "text-primary-bright" : "text-tertiary-deep"}`}>
-                {cagr === null ? (
-                  "—"
+              <span className="text-[11px] text-ink-faint">XIRR (annualized)</span>
+              <div className={`mt-0.5 flex flex-nowrap items-center gap-1 overflow-hidden whitespace-nowrap text-xs font-semibold ${(xirrPct ?? 0) >= 0 ? "text-primary-bright" : "text-tertiary-deep"}`}>
+                {xirrPct === null ? (
+                  <span className="text-ink-faint">—</span>
                 ) : (
                   <>
                     <TrendingUp size={13} className="flex-shrink-0" />
-                    <span className="tabular">{cagr >= 0 ? "+" : ""}{cagr.toFixed(1)}%</span>
-                    <span className="flex-shrink-0 text-[10px] text-ink-faint">annualised</span>
+                    <span className="tabular">
+                      {xirrPct >= 0 ? "+" : ""}
+                      {Math.abs(xirrPct) >= 1000 ? `>${xirrPct > 0 ? "" : "-"}999%` : `${xirrPct.toFixed(1)}%`}
+                    </span>
+                    <span className="flex-shrink-0 text-[10px] text-ink-faint">p.a.</span>
                   </>
                 )}
               </div>

@@ -12,17 +12,23 @@ export default defineSchema({
   }).index("by_type", ["type"]),
 
   transactions: defineTable({
-    kind: v.union(v.literal("expense"), v.literal("income")),
+    // "transfer" moves money between two accounts (accountId -> toAccountId)
+    // without touching income/expense analytics or net worth.
+    kind: v.union(v.literal("expense"), v.literal("income"), v.literal("transfer")),
     amount: v.number(),
-    categoryId: v.id("categories"),
+    categoryId: v.optional(v.id("categories")), // transfers have none
+    toAccountId: v.optional(v.id("accounts")), // transfer destination
     subcategory: v.optional(v.string()),
     accountId: v.optional(v.id("accounts")),
     note: v.optional(v.string()),
     date: v.number(), // epoch ms
     billImageId: v.optional(v.id("_storage")),
+    // Duplicate guard: hash of timestamp+amount+kind+account(s)+category.
+    dedupeKey: v.optional(v.string()),
   })
     .index("by_date", ["date"])
-    .index("by_category", ["categoryId"]),
+    .index("by_category", ["categoryId"])
+    .index("by_dedupe", ["dedupeKey"]),
 
   budgets: defineTable({
     month: v.string(), // "YYYY-MM"

@@ -53,7 +53,14 @@ export default function AppShell({
     <EntryEditContext.Provider value={{ openEntry, openEntryWithKind }}>
       <div className="mx-auto flex min-h-screen w-full max-w-lg flex-col">
         {/* No page title — the tab name in the bottom nav is enough. */}
-        <main className="flex-1 px-4 pb-32 pt-4">{children}</main>
+        {/* key retriggers the enter animation on every tab switch; safe-area
+            paddings keep content clear of the camera cutout and gesture bar. */}
+        <main
+          key={location.pathname}
+          className="animate-tab flex-1 px-4 pb-[calc(8rem+env(safe-area-inset-bottom,0px))] pt-[calc(1rem+env(safe-area-inset-top,0px))]"
+        >
+          {children}
+        </main>
 
         {/* Quick Log pill — bottom-right for one-hand reach, clear of the nav */}
         <button

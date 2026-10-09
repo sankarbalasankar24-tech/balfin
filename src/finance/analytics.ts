@@ -2,13 +2,15 @@ import { monthRange, monthKey, monthShift, monthLabel } from "./format";
 
 export interface TxnRow {
   _id: string;
-  kind: "expense" | "income";
+  kind: "expense" | "income" | "transfer";
   amount: number;
-  categoryId: string;
+  categoryId?: string;
+  toAccountId?: string;
   subcategory?: string;
   accountId?: string;
   note?: string;
   date: number;
+  dedupeKey?: string;
 }
 
 export interface MonthAgg {
@@ -44,12 +46,13 @@ export function aggregateMonth(
   const daily = Array.from({ length: daysInMonth }, (_, i) => ({ day: i + 1, net: 0 }));
 
   for (const t of rows) {
+    if (t.kind === "transfer") continue; // account-to-account: not income/expense
     if (t.kind === "income") income += t.amount;
     else expense += t.amount;
     const map = t.kind === "income" ? earnMap : spendMap;
-    map.set(t.categoryId, (map.get(t.categoryId) ?? 0) + t.amount);
+    map.set(t.categoryId!, (map.get(t.categoryId!) ?? 0) + t.amount);
     if (t.kind === "expense" && t.subcategory) {
-      const key = `${catName(t.categoryId)} › ${t.subcategory}`;
+      const key = `${catName(t.categoryId!)} › ${t.subcategory}`;
       subMap.set(key, (subMap.get(key) ?? 0) + t.amount);
     }
     const d = new Date(t.date);
@@ -158,7 +161,7 @@ export function aggregateRange(
     }));
     for (const t of rows) {
       const idx = new Date(t.date).getDate() - 1;
-      if (series[idx]) {
+      if (series[idx] && t.kind !== "transfer") {
         if (t.kind === "income") series[idx].income += t.amount;
         else series[idx].expense += t.amount;
         series[idx].net = series[idx].income - series[idx].expense;
@@ -182,6 +185,7 @@ export function aggregateRange(
       let inc = 0;
       let exp = 0;
       for (const t of rows) {
+        if (t.kind === "transfer") continue;
         if (t.date >= s && t.date < e) {
           if (t.kind === "income") inc += t.amount;
           else exp += t.amount;
@@ -192,10 +196,11 @@ export function aggregateRange(
   }
 
   for (const t of rows) {
+    if (t.kind === "transfer") continue;
     if (t.kind === "income") income += t.amount;
     else expense += t.amount;
     const map = t.kind === "income" ? earnMap : spendMap;
-    map.set(t.categoryId, (map.get(t.categoryId) ?? 0) + t.amount);
+    map.set(t.categoryId!, (map.get(t.categoryId!) ?? 0) + t.amount);
   }
 
   const toPies = (m: Map<string, number>, total: number) =>
@@ -227,23 +232,40 @@ export function aggregateRange(
   };
 }
 
+export type SortKey = "date-desc" | "date-asc" | "amount-desc" | "amount-asc";
+
 export function searchTxns(
   txns: TxnRow[],
   catName: (id: string) => string,
-  opts: { q?: string; kind?: "all" | "expense" | "income"; categoryId?: string; from?: number; to?: number }
+  opts: {
+    q?: string;
+    kind?: "all" | "expense" | "income" | "transfer";
+    categoryId?: string;
+    from?: number;
+    to?: number;
+    sort?: SortKey;
+  }
 ): TxnRow[] {
   const q = opts.q?.trim().toLowerCase();
-  return txns
-    .filter((t) => {
-      if (opts.kind && opts.kind !== "all" && t.kind !== opts.kind) return false;
-      if (opts.categoryId && t.categoryId !== opts.categoryId) return false;
-      if (opts.from !== undefined && t.date < opts.from) return false;
-      if (opts.to !== undefined && t.date >= opts.to + 86400000) return false;
-      if (q) {
-        const hay = `${t.note ?? ""} ${catName(t.categoryId)} ${t.subcategory ?? ""}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    })
-    .sort((a, b) => b.date - a.date);
+  const rows = txns.filter((t) => {
+    if (opts.kind && opts.kind !== "all" && t.kind !== opts.kind) return false;
+    if (opts.categoryId && t.categoryId !== opts.categoryId) return false;
+    if (opts.from !== undefined && t.date < opts.from) return false;
+    if (opts.to !== undefined && t.date >= opts.to + 86400000) return false;
+    if (q) {
+      const hay = `${t.note ?? ""} ${t.categoryId ? catName(t.categoryId) : "Transfer"} ${t.subcategory ?? ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  switch (opts.sort) {
+    case "date-asc":
+      return rows.sort((a, b) => a.date - b.date);
+    case "amount-desc":
+      return rows.sort((a, b) => b.amount - a.amount || b.date - a.date);
+    case "amount-asc":
+      return rows.sort((a, b) => a.amount - b.amount || b.date - a.date);
+    default:
+      return rows.sort((a, b) => b.date - a.date);
+  }
 }

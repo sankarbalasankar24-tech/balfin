@@ -5,22 +5,36 @@ import { fmtMoney, CURRENCIES, setCurrency } from "@/finance/format";
 import { CatIcon } from "@/finance/icons";
 import {
   Plus, Trash2, Download, Building2, X, FileSpreadsheet,
-  Pencil, Vibrate, Hand, Ban, RefreshCw, CheckCircle2, AlertCircle, ExternalLink, Volume2,
+  Pencil, Hand, Ban, RefreshCw, CheckCircle2, AlertCircle, ExternalLink, Shield,
 } from "lucide-react";
 
 type Tab = "categories" | "accounts" | "preferences";
 
+/** Android biometric app-lock bridge (absent on web). */
+interface SecurityPluginApi {
+  setLockEnabled: (o: { enabled: boolean }) => Promise<unknown>;
+  isLockEnabled: (o?: Record<string, never>) => Promise<{ enabled?: boolean }>;
+  canAuthenticate: (o?: Record<string, never>) => Promise<{ available?: boolean }>;
+}
+export function getSecurityPlugin(): SecurityPluginApi | null {
+  try {
+    const cap = (window as unknown as {
+      Capacitor?: { isNativePlatform?: () => boolean; Plugins?: { BalFinSecurity?: SecurityPluginApi } };
+    }).Capacitor;
+    if (cap?.isNativePlatform?.() && cap.Plugins?.BalFinSecurity) return cap.Plugins.BalFinSecurity;
+  } catch {
+    /* native only */
+  }
+  return null;
+}
+
 const GESTURES: Array<{ key: QuickAddGesture; label: string; desc: string; icon: React.ComponentType<{ size?: number }> }> = [
-  { key: "bubble", label: "Floating bubble", desc: "Draggable mint bubble over any app — tap it to quick-add", icon: Hand },
-  { key: "volume", label: "Volume double-tap", desc: "Double-press volume-up on any screen to pop quick entry", icon: Volume2 },
-  { key: "shake", label: "Shake phone", desc: "Shake the device any time to pop quick entry", icon: Vibrate },
+  { key: "bubble", label: "Floating bubble", desc: "Always-on draggable bubble over any app — tap it to quick-add", icon: Hand },
   { key: "none", label: "Off", desc: "Open quick entry only from inside the app", icon: Ban },
 ];
 
 interface QaStatus {
   bubble: boolean;
-  shake: boolean;
-  volume: boolean;
   batteryOk: boolean;
 }
 
@@ -41,6 +55,12 @@ export default function Manage() {
   const [overlayGranted, setOverlayGranted] = useState<boolean | null>(null);
   const [qaStatus, setQaStatus] = useState<QaStatus | null>(null);
   const isNative = !!getQuickAddPlugin();
+  const [bioLock, setBioLock] = useState(false);
+  useEffect(() => {
+    getSecurityPlugin()?.isLockEnabled({})
+      .then((r) => setBioLock(!!r?.enabled))
+      .catch(() => {});
+  }, []);
 
   const refreshQa = useCallback(() => {
     const qa = getQuickAddPlugin();
@@ -57,7 +77,7 @@ export default function Manage() {
       })
       .catch(() => {});
     qa.getStatus()
-      .then((s) => setQaStatus({ bubble: !!s.bubble, shake: !!s.shake, volume: !!s.volume, batteryOk: !!s.batteryOk }))
+      .then((s) => setQaStatus({ bubble: !!s.bubble, batteryOk: !!s.batteryOk }))
       .catch(() => {});
   }, [quickAddGesture]);
 
@@ -94,7 +114,7 @@ export default function Manage() {
         .map((t) => [
           new Date(t.date).toISOString(),
           t.kind,
-          catName(t.categoryId),
+          t.categoryId ? catName(t.categoryId) : "Transfer",
           t.subcategory ?? "",
           t.accountId ? accounts.find((a) => a._id === t.accountId)?.name ?? "" : "",
           String(t.amount),
@@ -211,16 +231,6 @@ export default function Manage() {
                 <CheckCircle2 size={13} /> Overlay allowed — the bubble floats over all apps and survives "clean all" and reboots.
               </p>
             )}
-            {quickAddGesture === "volume" && (
-              <p className="rounded-xl bg-surface-low px-3 py-2 text-[11px] text-ink-faint">
-                Double-press volume-up while the screen is on — works from any app.
-              </p>
-            )}
-            {quickAddGesture === "shake" && (
-              <p className="rounded-xl bg-surface-low px-3 py-2 text-[11px] text-ink-faint">
-                Shake works out of the box — no permissions needed.
-              </p>
-            )}
 
             {/* native engine diagnostics: what's actually running on the phone */}
             {isNative && (
@@ -228,8 +238,6 @@ export default function Manage() {
                 <div className="flex flex-wrap items-center gap-1.5">
                   <StatusChip label="Overlay" ok={overlayGranted === true} />
                   {qaStatus && <StatusChip label="Bubble" ok={qaStatus.bubble} />}
-                  {qaStatus && quickAddGesture === "shake" && <StatusChip label="Shake" ok={qaStatus.shake} />}
-                  {qaStatus && quickAddGesture === "volume" && <StatusChip label="Volume" ok={qaStatus.volume} />}
                   {qaStatus && <StatusChip label="Battery" ok={qaStatus.batteryOk} warnOnly />}
                 </div>
                 <div className="flex gap-2">
@@ -329,6 +337,37 @@ export default function Manage() {
                 Last push {new Date(sheetSync.lastPushedAt).toLocaleString("en-IN")}
               </p>
             )}
+          </div>
+
+          {/* privacy & security */}
+          <div className="space-y-3 rounded-2xl border border-white/5 bg-card p-5">
+            <h3 className="flex items-center gap-2 text-sm font-bold">
+              <Shield size={15} className="text-secondary" /> Privacy &amp; security
+            </h3>
+            <button
+              onClick={async () => {
+                const sec = getSecurityPlugin();
+                const next = !bioLock;
+                setBioLock(next);
+                if (sec) await sec.setLockEnabled({ enabled: next });
+              }}
+              className="flex w-full items-center justify-between rounded-xl bg-surface-low px-3 py-2.5 text-left"
+            >
+              <span>
+                <span className="block text-sm font-semibold">Biometric app lock</span>
+                <span className="block text-[11px] text-ink-faint">
+                  {isNative
+                    ? "Ask for fingerprint/face every time BalFin opens"
+                    : "Available in the Android app"}
+                </span>
+              </span>
+              <span className={`relative h-6 w-10 flex-shrink-0 rounded-full transition ${bioLock ? "bg-primary" : "bg-card-high"}`}>
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${bioLock ? "left-[1.125rem]" : "left-0.5"}`} />
+              </span>
+            </button>
+            <p className="text-[10px] leading-snug text-ink-faint">
+              All data travels encrypted (HTTPS/TLS) between this device, your Convex database and Google's servers. Your balance sheet never leaves your accounts.
+            </p>
           </div>
 
           <button onClick={exportCsv} className="flex w-full items-center justify-center gap-2 rounded-full bg-surface-low py-3 text-sm font-semibold text-ink">

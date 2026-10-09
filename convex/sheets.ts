@@ -17,6 +17,9 @@ export const setEndpoint = mutation({
     if (url && !url.startsWith("https://script.google.com/")) {
       throw new Error("Paste the Apps Script Web app URL (https://script.google.com/...)");
     }
+    if (url.includes("/dev")) {
+      throw new Error("That is a /dev test URL — deploy the script and paste the /exec URL");
+    }
     const existing = await ctx.db.query("sheetSync").first();
     const patch = { endpoint: url || undefined, lastStatus: "pending" as const, lastError: undefined };
     if (existing) await ctx.db.patch(existing._id, patch);
@@ -83,10 +86,25 @@ export const buildPayload = query({
 
     // Transactions: Date | Type | Category | Subcategory | Account | Description | Debit | Credit
     for (const t of txns) {
+      if (t.kind === "transfer") {
+        // Money moved between accounts: Debit leaves the source, Credit
+        // arrives at the destination; excluded from Income/Expense summaries.
+        rows.push([
+          dt(t.date),
+          "Transfer",
+          "Account Transfer",
+          "",
+          `${t.accountId ? accName.get(t.accountId) ?? "" : ""} → ${t.toAccountId ? accName.get(t.toAccountId) ?? "" : ""}`,
+          t.note ?? "",
+          "",
+          "",
+        ]);
+        continue;
+      }
       rows.push([
         dt(t.date),
         t.kind === "income" ? "Income" : "Expense",
-        catName.get(t.categoryId) ?? "Unknown",
+        t.categoryId ? catName.get(t.categoryId) ?? "Unknown" : "Unknown",
         t.subcategory ?? "",
         t.accountId ? accName.get(t.accountId) ?? "" : "",
         t.note ?? "",
@@ -167,6 +185,7 @@ export const buildPayload = query({
     // Monthly summary block (second table inside the same sheet tab)
     const monthMap = new Map<string, { inc: number; exp: number }>();
     for (const t of txns) {
+      if (t.kind === "transfer") continue; // not income/expense
       const d = new Date(t.date);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const cur = monthMap.get(key) ?? { inc: 0, exp: 0 };
@@ -216,10 +235,17 @@ export const pushToSheet = action({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      redirect: "follow",
     });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Sheets responded ${res.status}: ${text.slice(0, 200)}`);
+    const text = await res.text().catch(() => "");
+    const looksHtml = /^\s*<(!doctype|html)/i.test(text);
+    if (!res.ok || looksHtml) {
+      if (res.status === 401 || res.status === 403 || looksHtml) {
+        throw new Error(
+          "Google blocked the sync (403). Fix once in your sheet: Apps Script → Deploy → Manage deployments → Edit → 'Who has access' = Anyone → Deploy, then update the URL here if it changed."
+        );
+      }
+      throw new Error(`Sheets responded ${res.status}: ${text.slice(0, 160)}`);
     }
   },
 });

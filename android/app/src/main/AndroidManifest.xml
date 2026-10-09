@@ -57,29 +57,17 @@
                 android:value="Floating quick-add bubble so the user can open the quick entry popup from any app." />
         </service>
 
-        <!-- Shake detection for the quick-add popup. -->
-        <service
-            android:name=".ShakeGestureService"
-            android:exported="false"
-            android:stopWithTask="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Shake gesture detection to open the quick entry popup." />
-        </service>
+        <!-- Daily financial summary notification (today's spend, portfolio moves). -->
+        <receiver
+            android:name=".DailySummaryReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
-        <!-- Volume double-press detection for the quick-add popup. -->
-        <service
-            android:name=".VolumeGestureService"
-            android:exported="false"
-            android:stopWithTask="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Volume double-press gesture detection to open the quick entry popup." />
-        </service>
-
-        <!-- Bring the quick-add bubble / shake detector back after reboot. -->
+        <!-- Bring the quick-add bubble back after reboot. -->
         <receiver
             android:name=".QuickAddBootReceiver"
             android:enabled="true"
@@ -107,7 +95,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 </manifest>

@@ -132,6 +132,7 @@ export interface PortfolioTotals {
   totalPL: number | null;
   totalGainPct: number | null;
   cagrPct: number | null;
+  xirrPct: number | null;
   // combined (open + realized) per LT/ST section
   ltCombinedPL: number | null;
   stCombinedPL: number | null;
@@ -170,6 +171,80 @@ export function portfolioCagrPct(
   if (weighted <= 0 || !isFinite(net)) return null;
   const cagr = (net / weighted) * 100;
   return isFinite(cagr) ? cagr : null;
+}
+
+export interface XirrFlow {
+  amount: number; // negative = money out of pocket (buy), positive = money in (sell/dividend/valuation)
+  date: number; // epoch ms
+}
+
+/**
+ * Extended Internal Rate of Return: the money-weighted annualized rate that
+ * sets the NPV of every dated flow (buys, sells, dividends, current value)
+ * to zero. Newton-Raphson with a bisection fallback over [-0.9999, 10].
+ */
+export function xirr(flows: XirrFlow[]): number | null {
+  if (flows.length < 2) return null;
+  const t0 = Math.min(...flows.map((f) => f.date));
+  const npv = (rate: number) =>
+    flows.reduce((s, f) => s + f.amount / Math.pow(1 + rate, (f.date - t0) / (365 * 86400000)), 0);
+
+  // Wide bracket: young portfolios (held days, not years) can have
+  // enormous annualized rates — the root must be inside [lo, hi] or
+  // bisection silently returns null. 1e9 => 100,000,000,000% cap.
+  let lo = -0.9999, hi = 1e9;
+  let flo = npv(lo), fhi = npv(hi);
+  if (!isFinite(flo) || !isFinite(fhi) || flo * fhi > 0) return null;
+
+  // Newton from a sane seed first (falls back to bisection)
+  let r = 0.12;
+  for (let i = 0; i < 60; i++) {
+    const f = npv(r);
+    if (!isFinite(f)) break;
+    const eps = 1e-7;
+    const d = (npv(r + eps) - npv(r - eps)) / (2 * eps);
+    if (Math.abs(d) < 1e-12) break;
+    const next = r - f / d;
+    if (!isFinite(next) || next <= -0.9999 || next > 1e9) break;
+    if (Math.abs(next - r) < 1e-7) return next * 100;
+    r = next;
+  }
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2;
+    const fm = npv(mid);
+    if (!isFinite(fm)) return null;
+    if (Math.abs(fm) < 1e-6) return mid * 100;
+    if (flo * fm < 0) {
+      hi = mid;
+      fhi = fm;
+    } else {
+      lo = mid;
+      flo = fm;
+    }
+  }
+  return ((lo + hi) / 2) * 100;
+}
+
+/** All investment cash flows (stocks + MFs) for XIRR, valued at today. */
+export function allXirrFlows(
+  positions: PositionSummary[],
+  mfs: MFRow[],
+  mfQuote: (f: MFRow) => number | null
+): XirrFlow[] {
+  const flows: XirrFlow[] = [];
+  const now = Date.now();
+  for (const p of positions) {
+    flows.push({ amount: -(p.stock.quantity * p.stock.buyPrice + (p.stock.buyCharges ?? 0)), date: p.stock.buyDate });
+    for (const e of p.exits) flows.push({ amount: e.exitPrice * e.quantity - (e.charges ?? 0), date: e.exitDate });
+    for (const d of p.dividendRows ?? []) flows.push({ amount: d.amount, date: d.date });
+    if (p.remainingQty > 0 && p.currentValue !== null) flows.push({ amount: p.currentValue, date: now });
+  }
+  for (const f of mfs) {
+    flows.push({ amount: -(f.units * f.avgNav), date: f.buyDate ?? f.buyDate ?? now });
+    const val = mfQuote(f);
+    if (val !== null && f.units > 0) flows.push({ amount: val, date: now });
+  }
+  return flows;
 }
 
 export function portfolioTotals(positions: PositionSummary[]): PortfolioTotals {
@@ -245,6 +320,7 @@ export function portfolioTotals(positions: PositionSummary[]): PortfolioTotals {
         ? (totalPL / investedAllTime) * 100
         : null,
     cagrPct: cagr,
+    xirrPct: null, // filled by the caller via computeXirr (needs MF quotes)
     ltCombinedPL:
       hasLT || ltRealized !== 0 ? (hasLT ? ltPL : 0) + ltRealized : null,
     stCombinedPL:

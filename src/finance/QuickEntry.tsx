@@ -2,13 +2,14 @@ import React, { useEffect, useRef, useState } from "react";
 import { useFinance } from "./FinanceContext";
 import { CatIcon } from "./icons";
 import { rememberEntry, useSuggestions, topNotes } from "./suggest";
-import { X, Delete, Wallet, Check, Clock } from "lucide-react";
+import { suggestCategory } from "./autocat";
+import { X, Delete, Wallet, Check, Clock, Sparkles, ArrowLeftRight } from "lucide-react";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   editId?: string | null;
-  initialKind?: "expense" | "income";
+  initialKind?: "expense" | "income" | "transfer";
   /** Popup variant renders denser for the gesture overlay window */
   variant?: "sheet" | "popup";
 }
@@ -35,12 +36,14 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
   const { noteSuggestions, subSuggestions, refresh: refreshMem } = useSuggestions();
   const editing = editId ? transactions.find((t) => t._id === editId) : undefined;
 
-  const [kind, setKind] = useState<"expense" | "income">("expense");
+  const [kind, setKind] = useState<"expense" | "income" | "transfer">("expense");
   const [amount, setAmount] = useState("");
   const [catId, setCatId] = useState<string | null>(null);
+  const [toAccountId, setToAccountId] = useState<string | undefined>(undefined);
   const [sub, setSub] = useState<string | null>(null);
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
   const [note, setNote] = useState("");
+  const [aiPick, setAiPick] = useState<{ id: string; confidence: number; source: "history" | "keyword" } | null>(null);
   const [dateStr, setDateStr] = useState("");
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -54,7 +57,8 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
     if (editId && editing) {
       setKind(editing.kind);
       setAmount(String(editing.amount));
-      setCatId(editing.categoryId);
+      setCatId(editing.categoryId ?? null);
+      setToAccountId(editing.toAccountId);
       setSub(editing.subcategory ?? null);
       setAccountId(editing.accountId);
       setNote(editing.note ?? "");
@@ -63,8 +67,10 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
       setKind(initialKind ?? "expense");
       setAmount("");
       setCatId(null);
+      setToAccountId(undefined);
       setSub(null);
       setNote("");
+      setAiPick(null);
       setDateStr(fmtLocal(Date.now()));
       // Default account: Gpay if it exists, else the first account.
       const gpay = accounts.find((a) => /gpay/i.test(a.name));
@@ -91,6 +97,13 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
   const noteHits = note ? noteSuggestions(note) : topNotes(4);
   const subHits = subSuggestions("");
 
+  // AI suggestion: fires once enough note text exists and no manual pick.
+  useEffect(() => {
+    if (kind === "transfer" || catId) return;
+    const hit = suggestCategory(note, categories, transactions);
+    setAiPick(hit);
+  }, [note, kind, catId, categories, transactions]);
+
   const appendNum = (ch: string) => {
     setAmount((a) => {
       if (ch === "." && a.includes(".")) return a;
@@ -108,7 +121,9 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
 
   const save = async () => {
     const amt = parseFloat(amount);
-    if (!amt || amt <= 0 || !catId) return;
+    if (!amt || amt <= 0) return;
+    if (kind !== "transfer" && !catId) return;
+    if (kind === "transfer" && (!toAccountId || toAccountId === accountId)) return;
     setSaving(true);
     try {
       const parsed = dateStr ? new Date(dateStr).getTime() : NaN;
@@ -117,18 +132,20 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
         await updateTxn(editing._id, {
           kind,
           amount: amt,
-          categoryId: catId,
-          subcategory: sub ?? undefined,
+          categoryId: kind === "transfer" ? undefined : catId ?? undefined,
+          toAccountId: kind === "transfer" ? toAccountId : undefined,
+          subcategory: kind === "transfer" ? undefined : sub ?? undefined,
           accountId,
           note: note.trim() || undefined,
           date: ts,
-        });
+        } as Parameters<typeof updateTxn>[1]);
       } else {
         await addTxn({
           kind,
           amount: amt,
-          categoryId: catId,
-          subcategory: sub ?? undefined,
+          categoryId: kind === "transfer" ? undefined : catId ?? undefined,
+          toAccountId: kind === "transfer" ? toAccountId : undefined,
+          subcategory: kind === "transfer" ? undefined : sub ?? undefined,
           accountId,
           note: note.trim() || undefined,
           date: ts,
@@ -185,18 +202,24 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
             </div>
           ) : (
           <div className="inline-flex rounded-full border border-white/10 bg-surface-lowest p-1">
-            {(["expense", "income"] as const).map((k) => (
+            {(["expense", "income", "transfer"] as const).map((k) => (
               <button
                 key={k}
                 onClick={() => {
                   setKind(k);
                   setCatId(null);
                   setSub(null);
+                  setAiPick(null);
+                  if (k === "transfer" && accounts.length > 1) {
+                    const other = accounts.find((a) => a._id !== accountId) ?? accounts[0];
+                    setToAccountId(other?._id);
+                  }
                 }}
-                className={`rounded-full px-3 py-1 text-xs font-semibold capitalize transition ${
+                className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold capitalize transition ${
                   kind === k ? "bg-primary text-[#003823]" : "text-ink-faint"
                 }`}
               >
+                {k === "transfer" && <ArrowLeftRight size={11} />}
                 {k}
               </button>
             ))}
@@ -271,15 +294,20 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
           {wizard && step === 1 && (
             <div className="flex justify-center">
               <div className="inline-flex rounded-full border border-white/10 bg-surface-lowest p-1">
-                {(["expense", "income"] as const).map((k) => (
+                {(["expense", "income", "transfer"] as const).map((k) => (
                   <button
                     key={k}
                     onClick={() => {
                       setKind(k);
                       setCatId(null);
                       setSub(null);
+                      setAiPick(null);
+                      if (k === "transfer" && accounts.length > 1) {
+                        const other = accounts.find((a) => a._id !== accountId) ?? accounts[0];
+                        setToAccountId(other?._id);
+                      }
                     }}
-                    className={`rounded-full px-4 py-1.5 text-xs font-semibold capitalize transition ${
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold capitalize transition ${
                       kind === k ? "bg-primary text-[#003823]" : "text-ink-faint"
                     }`}
                   >
@@ -290,8 +318,56 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
             </div>
           )}
 
+          {/* transfer destination picker */}
+          {kind === "transfer" && (
+            <div>
+              <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-widest text-ink-faint">
+                To account
+              </p>
+              <div className="no-scrollbar flex items-center gap-2 overflow-x-auto py-1">
+                {accounts
+                  .filter((a) => a._id !== accountId)
+                  .map((a) => (
+                    <button
+                      key={a._id}
+                      onClick={() => setToAccountId(a._id)}
+                      className={`flex-shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition active:scale-95 ${
+                        toAccountId === a._id
+                          ? "bg-secondary-deep text-white"
+                          : "border border-white/10 bg-card text-ink-soft"
+                      }`}
+                    >
+                      {a.name}
+                    </button>
+                  ))}
+              </div>
+              <p className="mt-1 px-0.5 text-[10px] text-ink-faint">
+                Moves money between accounts — net worth stays unchanged.
+              </p>
+            </div>
+          )}
+
+          {/* AI category suggestion */}
+          {!wizard && aiPick && !catId && (
+            <button
+              onClick={() => {
+                setCatId(aiPick.id);
+                setAiPick(null);
+              }}
+              className="flex w-full items-center gap-2 rounded-2xl border border-secondary/30 bg-secondary-deep/15 px-4 py-2.5 text-left transition active:scale-[0.99]"
+            >
+              <Sparkles size={15} className="flex-shrink-0 text-secondary" />
+              <span className="text-xs text-ink-soft">
+                Suggested: <b className="text-ink">{categories.find((c) => c._id === aiPick.id)?.name}</b>
+                <span className="ml-1 text-ink-faint">
+                  ({Math.round(aiPick.confidence * 100)}% · {aiPick.source === "history" ? "from your history" : "keyword match"}) — tap to use
+                </span>
+              </span>
+            </button>
+          )}
+
           {/* category capsules */}
-          {(!wizard || step === 1) && (
+          {(!wizard || step === 1) && kind !== "transfer" && (
           <div>
             <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-widest text-ink-faint">
               Select category
@@ -321,7 +397,7 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
           )}
 
           {/* subcategory capsules + suggestions */}
-          {(!wizard || step === 1) && (activeCat || subHits.length > 0) && (
+          {(!wizard || step === 1) && kind !== "transfer" && (activeCat || subHits.length > 0) && (
             <div>
               <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-widest text-ink-faint">
                 Subcategory
@@ -359,7 +435,9 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
           {/* account capsules */}
           {(!wizard || step === 2) && accounts.length > 0 && (
             <div>
-              <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-widest text-ink-faint">Account</p>
+              <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-widest text-ink-faint">
+                {kind === "transfer" ? "From account" : "Account"}
+              </p>
               <div className="no-scrollbar flex items-center gap-2 overflow-x-auto py-1">
                 <button
                   onClick={() => {
@@ -426,14 +504,14 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
           {wizard && step < 2 ? (
             <button
               onClick={() => setStep(step + 1)}
-              disabled={step === 0 ? !amount : !catId}
+              disabled={step === 0 ? !amount : kind === "transfer" ? !toAccountId || toAccountId === accountId : !catId}
               className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-primary text-sm font-bold text-[#003823] shadow-[0_8px_24px_-4px_rgba(0,200,136,0.35)] transition active:scale-[0.98] disabled:opacity-40"
             >
               Next — {step === 0 ? "category" : "date & note"}
             </button>
           ) : (
             <button
-              disabled={!amount || !catId || saving || saved}
+              disabled={!amount || (kind !== "transfer" && !catId) || (kind === "transfer" && (!toAccountId || toAccountId === accountId)) || saving || saved}
               onClick={save}
               className={`flex h-12 flex-1 items-center justify-center gap-2 rounded-full text-sm font-bold shadow-[0_8px_24px_-4px_rgba(0,200,136,0.35)] transition active:scale-[0.98] disabled:opacity-40 ${
                 saved ? "bg-primary-bright text-[#002113]" : "bg-primary text-[#003823]"

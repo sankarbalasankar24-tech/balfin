@@ -44,8 +44,8 @@ export interface SheetSyncCfg {
   backupFrequency?: string;
 }
 
-/** Choosable gesture that opens the quick-entry popup (Android). */
-export type QuickAddGesture = "none" | "bubble" | "shake" | "volume";
+/** Choosable gesture that opens the quick-entry popup (Android). Bubble only. */
+export type QuickAddGesture = "none" | "bubble";
 export type SheetBackupFrequency = "daily" | "weekly" | "monthly";
 
 /** Minimal typing for the Android QuickAdd plugin (absent on web). */
@@ -141,9 +141,10 @@ interface FinanceCtx {
   // mutations
   addTxn: (
     data: {
-      kind: "expense" | "income";
+      kind: "expense" | "income" | "transfer";
       amount: number;
-      categoryId: string;
+      categoryId?: string;
+      toAccountId?: string;
       subcategory?: string;
       accountId?: string;
       note?: string;
@@ -308,7 +309,9 @@ function Inner({ children }: { children: React.ReactNode }) {
   }, [ready, categories.length, mSeedDefaults]);
 
   const [currency, setCurrencyPref] = usePref("currency", "INR");
-  const [quickAddGesture, setQuickAddGesturePref] = usePref<QuickAddGesture>("quickAddGesture", "bubble");
+  const [quickAddGestureRaw, setQuickAddGesturePref] = usePref<QuickAddGesture>("quickAddGesture", "bubble");
+  // Older builds offered shake/volume — fold them into the bubble gesture.
+  const quickAddGesture: QuickAddGesture = quickAddGestureRaw === "none" ? "none" : "bubble";
 
   // push gesture choice into the Android layer (bubble / shake service)
   useEffect(() => {

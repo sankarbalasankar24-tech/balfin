@@ -7,8 +7,8 @@ import android.os.Build;
 
 /**
  * Re-applies the stored quick-add gesture after a device reboot so the
- * floating bubble / shake detector come back without opening the app.
- * Does nothing when the user chose "Off" in Manage.
+ * floating bubble comes back without opening the app, and re-arms the daily
+ * summary alarm. Does nothing when the user chose "Off" in Manage.
  */
 public class QuickAddBootReceiver extends BroadcastReceiver {
   @Override
@@ -21,30 +21,17 @@ public class QuickAddBootReceiver extends BroadcastReceiver {
     String gesture = context
         .getSharedPreferences(QuickAddTogglePlugin.PREFS, Context.MODE_PRIVATE)
         .getString(QuickAddTogglePlugin.KEY_GESTURE, "bubble");
-    if ("none".equals(gesture)) return;
-
-    boolean wantShake = "shake".equals(gesture) || "both".equals(gesture);
-    boolean wantBubble = "bubble".equals(gesture) || "both".equals(gesture);
-    boolean wantVolume = "volume".equals(gesture) || "both".equals(gesture);
-    try {
-      if (wantShake) {
-        Intent shake = new Intent(context, ShakeGestureService.class);
-        if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(shake);
-        else context.startService(shake);
-      }
-      if (wantBubble) {
+    if (!"none".equals(gesture)) {
+      try {
         Intent bubble = new Intent(context, QuickAddBubbleService.class);
         if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(bubble);
         else context.startService(bubble);
+      } catch (Exception ignored) {
+        // Rare: FGS-from-boot restrictions on some OEM skins. The next app open
+        // re-applies the gesture via QuickAddTogglePlugin.load().
       }
-      if (wantVolume) {
-        Intent volume = new Intent(context, VolumeGestureService.class);
-        if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(volume);
-        else context.startService(volume);
-      }
-    } catch (Exception ignored) {
-      // Rare: FGS-from-boot restrictions on some OEM skins. The next app open
-      // re-applies the gesture via QuickAddTogglePlugin.load().
     }
+    // Re-arm the nightly financial summary notification.
+    DailySummaryReceiver.scheduleNext(context);
   }
 }

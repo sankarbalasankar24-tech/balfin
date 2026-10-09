@@ -14,9 +14,9 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 /**
- * Bridge for the gesture quick-add feature. The JS layer calls setGesture
+ * Bridge for the quick-add floating bubble. The JS layer calls setGesture
  * whenever the user changes their choice in Manage; native side starts or
- * stops the floating-bubble and shake-detection services accordingly.
+ * stops the floating-bubble service accordingly (bubble-only by design).
  */
 @CapacitorPlugin(name = "QuickAdd")
 public class QuickAddTogglePlugin extends Plugin {
@@ -27,14 +27,18 @@ public class QuickAddTogglePlugin extends Plugin {
   @Override
   public void load() {
     super.load();
-    // Re-apply the stored choice on every app launch.
-    applyGesture(getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        .getString(KEY_GESTURE, "bubble"));
+    // Re-apply the stored choice on every app launch. Older installs may
+    // still hold "shake"/"volume" — normalize them to the bubble.
+    String stored = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getString(KEY_GESTURE, "bubble");
+    if (!"none".equals(stored)) stored = "bubble";
+    applyGesture(stored);
   }
 
   @PluginMethod
   public void setGesture(PluginCall call) {
     String gesture = call.getString("gesture", "bubble");
+    if (!"none".equals(gesture)) gesture = "bubble";
     getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         .edit().putString(KEY_GESTURE, gesture).apply();
     applyGesture(gesture);
@@ -42,26 +46,9 @@ public class QuickAddTogglePlugin extends Plugin {
   }
 
   private void applyGesture(String gesture) {
-    // shake needs the motion service; bubble needs a foreground service token.
-    Intent shake = new Intent(getContext(), ShakeGestureService.class);
     Intent bubble = new Intent(getContext(), QuickAddBubbleService.class);
-    Intent volume = new Intent(getContext(), VolumeGestureService.class);
 
-    boolean wantShake = "shake".equals(gesture) || "both".equals(gesture);
-    boolean wantBubble = "bubble".equals(gesture) || "both".equals(gesture);
-    boolean wantVolume = "volume".equals(gesture) || "both".equals(gesture);
-
-    if (wantShake) {
-      try {
-        if (Build.VERSION.SDK_INT >= 26) getContext().startForegroundService(shake);
-        else getContext().startService(shake);
-      } catch (Exception ignored) {
-      }
-    } else {
-      getContext().stopService(shake);
-    }
-
-    if (wantBubble) {
+    if ("bubble".equals(gesture)) {
       try {
         if (Build.VERSION.SDK_INT >= 26) getContext().startForegroundService(bubble);
         else getContext().startService(bubble);
@@ -69,16 +56,6 @@ public class QuickAddTogglePlugin extends Plugin {
       }
     } else {
       getContext().stopService(bubble);
-    }
-
-    if (wantVolume) {
-      try {
-        if (Build.VERSION.SDK_INT >= 26) getContext().startForegroundService(volume);
-        else getContext().startService(volume);
-      } catch (Exception ignored) {
-      }
-    } else {
-      getContext().stopService(volume);
     }
   }
 
@@ -90,8 +67,8 @@ public class QuickAddTogglePlugin extends Plugin {
         .getString(KEY_GESTURE, "bubble"));
     ret.put("overlay", Settings.canDrawOverlays(ctx));
     ret.put("bubble", QuickAddBubbleService.running);
-    ret.put("shake", ShakeGestureService.running);
-    ret.put("volume", VolumeGestureService.running);
+    ret.put("shake", false);
+    ret.put("volume", false);
     PowerManager pm = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
     ret.put("batteryOk", pm != null && pm.isIgnoringBatteryOptimizations(ctx.getPackageName()));
     call.resolve(ret);

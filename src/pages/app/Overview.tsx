@@ -103,6 +103,73 @@ export default function Overview() {
     });
   }, [mAgg]);
 
+  // Velocity vs previous month's FINAL baseline (its full-month per-day avg).
+  const velocityDelta = useMemo(() => {
+    const now = new Date();
+    const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+    const prevEnd = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const prevDays = Math.max(1, Math.round((prevEnd - prevStart) / 86400000));
+    let prevSpent = 0;
+    for (const t of transactions) {
+      if (t.kind === "expense" && t.date >= prevStart && t.date < prevEnd) prevSpent += t.amount;
+    }
+    const prevPerDay = prevSpent / prevDays;
+    if (prevPerDay <= 0) return null;
+    const pct = ((velocity.perDay - prevPerDay) / prevPerDay) * 100;
+    return { pct, prevPerDay };
+  }, [transactions, velocity.perDay]);
+
+  // ---- Net Worth History: month-end totals across the data's monthly span ----
+  const netWorthHistory = useMemo(() => {
+    const now = new Date();
+    if (!transactions.length && !accounts.length) return [];
+    // earliest event among entries and account creation
+    let min = Date.now();
+    for (const t of transactions) if (t.date < min) min = t.date;
+    const first = new Date(min);
+    const months: Array<{ label: string; key: string; value: number }> = [];
+    const investAt = (endTs: number) => {
+      let v = 0;
+      for (const s of stocks) {
+        if (s.buyDate < endTs) v += s.quantity * s.buyPrice;
+        const sold = exits.filter((e) => e.stockId === s._id && e.exitDate < endTs).reduce((sum, e) => sum + e.quantity, 0);
+        v -= sold * s.buyPrice;
+      }
+      for (const f of depositFlows) if (f.date < endTs) v += f.type === "withdrawal" ? -f.amount : f.amount;
+      return v;
+    };
+    const totalMonths =
+      (now.getFullYear() - first.getFullYear()) * 12 + (now.getMonth() - first.getMonth());
+    const count = Math.min(12, totalMonths + 1);
+    for (let i = count - 1; i >= 0; i--) {
+      // month boundary: end of the month i months before now
+      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1).getTime();
+      const isCurrent = i === 0;
+      if (isCurrent) {
+        months.push({ label: "Now", key: "now", value: totalWorth });
+        continue;
+      }
+      let liquid = 0;
+      for (const a of accounts) {
+        let flow = 0;
+        for (const t of transactions) {
+          if (t.accountId === a._id && t.date < end && t.kind !== "transfer") {
+            flow += t.kind === "income" ? t.amount : -t.amount;
+          }
+        }
+        liquid += a.openingBalance + flow;
+      }
+      months.push({
+        label: new Date(end - 1).toLocaleDateString("en-IN", { month: "short" }),
+        key: String(end),
+        value: Math.max(0, liquid + investAt(end)),
+      });
+    }
+    return months;
+  }, [transactions, accounts, stocks, exits, depositFlows, totalWorth]);
+  const nwMax = Math.max(1, ...netWorthHistory.map((p) => p.value));
+  const nwMin = Math.min(...netWorthHistory.map((p) => p.value), nwMax);
+
   // ---- weekly trajectory: last 7 days, income vs spend paired bars ----
   const week = useMemo(() => {
     const days: Array<{ label: string; inc: number; exp: number }> = [];
@@ -280,6 +347,17 @@ export default function Overview() {
               <p className="text-xs text-ink-faint tabular">
                 {m(fmtMoney(velocity.spent, { compact: true }))} spent · {m(fmtMoney(velocity.perDay, { compact: true }))}/day avg
               </p>
+              {timeline === "month" && velocityDelta && (
+                <p className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold tabular">
+                  <span className={velocityDelta.pct <= 0 ? "text-primary-bright" : "text-tertiary"}>
+                    {velocityDelta.pct > 0 ? "+" : ""}
+                    {velocityDelta.pct.toFixed(0)}%
+                  </span>
+                  <span className="text-ink-faint">
+                    vs last month's {m(fmtMoney(velocityDelta.prevPerDay, { compact: true }))}/day
+                  </span>
+                </p>
+              )}
             </div>
             <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
               {timeline === "month" ? "Monthly" : timeline === "year" ? "Yearly" : "All time"}
@@ -370,6 +448,37 @@ export default function Overview() {
         </div>
       </section>
 
+      {/* ============ SECTION 3.5: Net Worth History ============ */}
+      {netWorthHistory.length > 1 && (
+        <section className="mt-3 rounded-2xl border border-white/5 bg-surface-low p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Net Worth History</h2>
+              <p className="text-xs text-ink-faint">Month-end totals · last {netWorthHistory.length} months</p>
+            </div>
+            <span className="rounded-full bg-secondary-deep/25 px-2.5 py-1 text-xs font-semibold text-secondary">Monthly</span>
+          </div>
+          <div className="flex h-28 items-end gap-1.5">
+            {netWorthHistory.map((p, i) => {
+              const h = Math.max(6, ((p.value - nwMin * 0.9) / Math.max(1, nwMax - nwMin * 0.9)) * 100);
+              const last = i === netWorthHistory.length - 1;
+              return (
+                <div key={p.key} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                  <span className="text-[9px] font-semibold tabular text-ink-faint">
+                    {i % 2 === 0 || last ? m(fmtMoney(p.value, { compact: true })) : ""}
+                  </span>
+                  <div
+                    className={`w-full max-w-7 rounded-t-md ${last ? "bg-primary shadow-[0_0_10px_rgba(0,200,136,0.4)]" : "bg-secondary-deep/50"}`}
+                    style={{ height: `${h}%` }}
+                  />
+                  <span className={`text-[9px] font-semibold ${last ? "text-primary" : "text-ink-faint"}`}>{p.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* ============ SECTION 4: recent activity ============ */}
       <section className="mt-4 space-y-3">
         <div className="flex items-center justify-between px-1">
@@ -395,11 +504,11 @@ export default function Overview() {
                     t.kind === "income" ? "bg-primary/15 text-primary-bright" : "bg-tertiary-deep/20 text-tertiary-deep"
                   }`}
                 >
-                  <CatIcon name={categories.find((c) => c._id === t.categoryId)?.icon} size={17} />
+                  <CatIcon name={t.categoryId ? categories.find((c) => c._id === t.categoryId)?.icon : undefined} size={17} />
                 </span>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold leading-tight">
-                    {catName(t.categoryId)}
+                    {t.categoryId ? catName(t.categoryId) : "Transfer"}
                     {t.subcategory ? ` › ${t.subcategory}` : ""}
                   </p>
                   <p className="truncate text-xs text-ink-faint">
