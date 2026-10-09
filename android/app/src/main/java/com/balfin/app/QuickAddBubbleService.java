@@ -148,7 +148,15 @@ public class QuickAddBubbleService extends Service {
           .setOngoing(true)
           .build();
     }
-    startForeground(NOTIF_ID, n);
+    if (Build.VERSION.SDK_INT >= 29) {
+      try {
+        startForeground(NOTIF_ID, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+      } catch (Throwable ignored) {
+        startForeground(NOTIF_ID, n);
+      }
+    } else {
+      startForeground(NOTIF_ID, n);
+    }
   }
 
   @Override

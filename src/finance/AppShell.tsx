@@ -2,6 +2,10 @@ import React, { useEffect, useState } from "react";
 import { NavLink as RRNavLink, useLocation, useNavigate } from "react-router-dom";
 import { Home, PieChart, List, TrendingUp, Settings, Plus } from "lucide-react";
 import QuickEntry from "./QuickEntry";
+import FloatingQuickBubble from "./FloatingQuickBubble";
+import AppSimulatorModal from "./AppSimulatorModal";
+import SecurityGate from "./SecurityGate";
+import { useFinance } from "./FinanceContext";
 
 const TABS: Array<{ to: string; label: string; icon: React.ComponentType<{ size?: number; className?: string }>; end?: boolean }> = [
   { to: "/app", label: "Overview", icon: Home, end: true },
@@ -18,12 +22,18 @@ export default function AppShell({
   title?: string;
   subtitle?: string;
 }) {
-  // The gesture popup is route-driven: #/app/quick-add renders this shell
-  // with the step-by-step wizard open, so the native overlay window (and
-  // home-screen shortcuts) survive router redirects deterministically.
   const location = useLocation();
   const navigate = useNavigate();
   const quickAdd = location.pathname === "/app/quick-add";
+  const {
+    isLocked,
+    savedPin,
+    unlock,
+    floatingBubbleEnabled,
+    quickAddGesture,
+    isSimulatingApp,
+    setIsSimulatingApp,
+  } = useFinance();
 
   const [entry, setEntry] = useState<{
     open: boolean;
@@ -38,8 +48,6 @@ export default function AppShell({
     popup: quickAdd,
   }));
 
-  // React reuses this component across /app <-> /app/quick-add (same element
-  // type), so the route must also drive the state after mount.
   useEffect(() => {
     if (quickAdd) setEntry((e) => ({ ...e, open: true, popup: true, editId: null }));
   }, [quickAdd]);
@@ -49,12 +57,15 @@ export default function AppShell({
   const openEntryWithKind = (kind: "expense" | "income") =>
     setEntry({ open: true, editId: null, initialKind: kind });
 
+  const showBubble = floatingBubbleEnabled && quickAddGesture === "bubble";
+
   return (
     <EntryEditContext.Provider value={{ openEntry, openEntryWithKind }}>
+      {/* Security App Lock Gate */}
+      <SecurityGate isLocked={isLocked} savedPin={savedPin} onUnlock={unlock} />
+
       <div className="mx-auto flex min-h-screen w-full max-w-lg flex-col">
-        {/* No page title — the tab name in the bottom nav is enough. */}
-        {/* key retriggers the enter animation on every tab switch; safe-area
-            paddings keep content clear of the camera cutout and gesture bar. */}
+        {/* Main Content */}
         <main
           key={location.pathname}
           className="animate-tab flex-1 px-4 pb-[calc(8rem+env(safe-area-inset-bottom,0px))] pt-[calc(1rem+env(safe-area-inset-top,0px))]"
@@ -62,18 +73,25 @@ export default function AppShell({
           {children}
         </main>
 
-        {/* Quick Log pill — bottom-right for one-hand reach, clear of the nav */}
-        <button
-          onClick={() => openEntry()}
-          aria-label="Quick log"
-          className="fixed right-4 z-40 flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary py-3 pl-4 pr-5 text-sm font-bold text-[#003823] shadow-[0_12px_32px_-4px_rgba(0,200,136,0.45)] transition active:scale-95"
-          style={{ bottom: "calc(5.25rem + env(safe-area-inset-bottom, 0px))" }}
-        >
-          <Plus size={18} strokeWidth={2.5} />
-          Quick Log
-        </button>
+        {/* Floating Quick Add Bubble (Instagram reel feature) */}
+        {showBubble && (
+          <FloatingQuickBubble
+            onOpenQuickAdd={(kind) => {
+              if (kind) openEntryWithKind(kind);
+              else openEntry();
+            }}
+            onOpenSimulator={() => setIsSimulatingApp(true)}
+            isSimulating={isSimulatingApp}
+          />
+        )}
 
-        {/* bottom nav */}
+        {/* Floating Simulator over external app */}
+        <AppSimulatorModal
+          open={isSimulatingApp}
+          onClose={() => setIsSimulatingApp(false)}
+        />
+
+        {/* Bottom Nav */}
         <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-lg -translate-x-1/2 rounded-t-2xl bg-surface-low px-2 pb-[max(env(safe-area-inset-bottom),0.4rem)] pt-1.5 shadow-[0_8px_24px_-4px_rgba(0,0,0,0.45)]">
           <div className="grid grid-cols-5">
             {TABS.map(({ to, label, icon: Icon, end }) => {
@@ -86,6 +104,7 @@ export default function AppShell({
           </div>
         </nav>
 
+        {/* QuickEntry Modal */}
         <QuickEntry
           open={entry.open}
           editId={entry.editId}
@@ -120,7 +139,7 @@ function NavLink({
         `mx-auto flex w-[4.2rem] flex-col items-center justify-center gap-0.5 rounded-full py-1 text-[10px] font-semibold transition active:scale-95 ${
           isActive
             ? "bg-primary text-[#003823]"
-            : "text-ink-faint"
+            : "text-ink-faint hover:text-ink"
         }`
       }
     >

@@ -8,7 +8,7 @@ import { portfolioTotals, mfValue, summarizePosition } from "@/finance/portfolio
 import { CatIcon } from "@/finance/icons";
 import {
   TrendingUp, TrendingDown, Wallet, ShoppingBag,
-  ChevronRight, Eye, EyeOff, Flame,
+  ChevronRight, Eye, EyeOff, Flame, ShieldCheck, CalendarClock, Zap, Check,
 } from "lucide-react";
 
 type Scope = "all" | "liquid" | "invest";
@@ -22,12 +22,17 @@ export default function Overview() {
   const {
     ready, transactions, categories, accounts, stocks, exits, dividends,
     mutualFunds, depositFlows, quotes, catName, accountName,
+    maskBalances, setMaskBalances,
+    recurringBills, payRecurring,
   } = useFinance();
   const { openEntry } = useEntryEdit();
   const navigate = useNavigate();
   const [scope, setScope] = useState<Scope>("all");
   const [timeline, setTimeline] = useState<Timeline>("month");
-  const [hide, setHide] = useState(false);
+  const hide = maskBalances;
+  const setHide = (val: boolean | ((p: boolean) => boolean)) => {
+    setMaskBalances(typeof val === "function" ? val(maskBalances) : val);
+  };
 
   const month = monthKey(Date.now());
 
@@ -67,6 +72,10 @@ export default function Overview() {
 
   // ---- velocity ----
   const mAgg = useMemo(() => aggregateMonth(transactions, catName, month), [transactions, catName, month]);
+
+  const savingsRate = mAgg.income > 0 ? Math.max(0, Math.round(((mAgg.income - mAgg.expense) / mAgg.income) * 100)) : 0;
+  const currentDays = new Date().getDate() || 1;
+  const monthlyRunway = mAgg.expense > 0 ? (liquidBalances / (mAgg.expense / currentDays * 30)).toFixed(1) : "12+";
   const velocity = useMemo(() => {
     const now = new Date();
     let spent = 0, earned = 0, start = -Infinity;
@@ -337,6 +346,95 @@ export default function Overview() {
           </div>
         </div>
       </section>
+
+      {/* ============ FINANCIAL HEALTH & RUNWAY ============ */}
+      <section className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-2xl border border-white/5 bg-surface-low p-3.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-ink-faint">Savings Rate</span>
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary-bright">
+              <Zap size={13} />
+            </span>
+          </div>
+          <div className="mt-2">
+            <p className="text-xl font-bold tabular text-white">
+              {savingsRate}%
+            </p>
+            <span className={`inline-block mt-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold ${
+              savingsRate >= 40
+                ? "bg-primary/20 text-primary-bright"
+                : savingsRate >= 20
+                ? "bg-secondary-deep/30 text-secondary"
+                : "bg-tertiary-deep/20 text-tertiary"
+            }`}>
+              {savingsRate >= 40 ? "Super Saver" : savingsRate >= 20 ? "Healthy" : "Tight"}
+            </span>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/5 bg-surface-low p-3.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-ink-faint">Cash Runway</span>
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-secondary-deep/20 text-secondary">
+              <ShieldCheck size={13} />
+            </span>
+          </div>
+          <div className="mt-2">
+            <p className="text-xl font-bold tabular text-white">
+              {monthlyRunway} <span className="text-xs font-normal text-ink-faint">Months</span>
+            </p>
+            <p className="text-[10px] text-ink-faint mt-0.5">
+              Liquid emergency cushion
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ============ UPCOMING RECURRING BILLS ============ */}
+      {recurringBills && recurringBills.length > 0 && (
+        <section className="mt-3 rounded-2xl border border-white/5 bg-surface-low p-4 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-white flex items-center gap-1.5">
+              <CalendarClock size={15} className="text-primary-bright" /> Upcoming Subscriptions &amp; Bills
+            </h2>
+            <span className="text-[10px] text-ink-faint">Monthly cycle</span>
+          </div>
+          <div className="space-y-1.5">
+            {recurringBills.slice(0, 3).map((bill) => {
+              const todayDay = new Date().getDate();
+              const daysAway = bill.dueDay - todayDay;
+              const dueText =
+                daysAway === 0
+                  ? "Due Today!"
+                  : daysAway > 0
+                  ? `Due in ${daysAway} days (${bill.dueDay}th)`
+                  : `Next: ${bill.dueDay}th`;
+              return (
+                <div
+                  key={bill._id}
+                  className="flex items-center justify-between rounded-xl bg-card p-2.5 border border-white/5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-white truncate">{bill.name}</p>
+                    <p className="text-[10px] text-ink-faint">{dueText}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold tabular text-white">
+                      {m(fmtMoney(bill.amount))}
+                    </span>
+                    <button
+                      onClick={() => payRecurring(bill._id)}
+                      className="rounded-full bg-primary/15 hover:bg-primary/25 border border-primary/30 px-2 py-1 text-[10px] font-bold text-primary-bright active:scale-95 transition"
+                    >
+                      Pay &amp; Log
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* ============ SECTION 3: Spend Velocity ============ */}
       <section className="mt-3 space-y-4 rounded-2xl border border-white/5 bg-surface-low p-4">

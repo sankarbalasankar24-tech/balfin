@@ -6,16 +6,25 @@ import { aggregateMonth } from "@/finance/analytics";
 import { CatIcon } from "@/finance/icons";
 import {
   ChevronLeft, ChevronRight, Plus, Clock, TrendingUp,
-  ShieldCheck, TriangleAlert, Ban,
+  ShieldCheck, TriangleAlert, Ban, CalendarClock, Repeat, Trash2, Check,
 } from "lucide-react";
 
 type Status = "ontrack" | "caution" | "over";
 
 export default function Budgets() {
-  const { ready, transactions, categories, budgets, catName, saveBudget } = useFinance();
+  const {
+    ready, transactions, categories, budgets, catName, saveBudget,
+    recurringBills, addRecurring, deleteRecurring, payRecurring, maskBalances,
+  } = useFinance();
   const { openEntry } = useEntryEdit();
   const [month, setMonth] = useState(monthKey(Date.now()));
   const existing = budgets.find((b) => b.month === month);
+
+  const [newRecName, setNewRecName] = useState("");
+  const [newRecAmount, setNewRecAmount] = useState("");
+  const [newRecDay, setNewRecDay] = useState("1");
+  const [newRecCat, setNewRecCat] = useState("");
+  const [showAddRec, setShowAddRec] = useState(false);
 
   const [incomeGoal, setIncomeGoal] = useState("");
   const [expenseBudget, setExpenseBudget] = useState("");
@@ -345,6 +354,126 @@ export default function Budgets() {
             {existing || activeCount > 0 ? "Edit budgets & goals" : "Create New Budget"}
           </button>
         )}
+
+        {/* ============ RECURRING SUBSCRIPTIONS & BILLS ============ */}
+        <div className="pt-3 border-t border-white/5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Repeat size={16} className="text-primary-bright" /> Subscriptions &amp; Recurring Bills
+              </h3>
+              <p className="text-xs text-ink-faint">
+                Total monthly burn:{" "}
+                <b className="text-white">
+                  {maskBalances ? "₹••••" : fmtMoney(recurringBills.reduce((s, r) => s + r.amount, 0))}
+                </b>
+              </p>
+            </div>
+            <button
+              onClick={() => setShowAddRec((p) => !p)}
+              className="flex items-center gap-1 rounded-full border border-white/10 bg-surface-low px-3 py-1.5 text-xs font-semibold text-ink-soft hover:text-white transition"
+            >
+              <Plus size={13} /> {showAddRec ? "Close" : "Add Bill"}
+            </button>
+          </div>
+
+          {showAddRec && (
+            <div className="rounded-2xl border border-primary/20 bg-surface-low p-4 space-y-3 animate-fade">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-primary-bright">New Recurring Bill</h4>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  value={newRecName}
+                  onChange={(e) => setNewRecName(e.target.value)}
+                  placeholder="Bill Name (e.g. Netflix, Gym, Rent)"
+                  className="col-span-2 rounded-xl border border-white/10 bg-surface px-3 py-2 text-xs text-ink placeholder:text-ink-faint/50"
+                />
+                <input
+                  type="number"
+                  value={newRecAmount}
+                  onChange={(e) => setNewRecAmount(e.target.value)}
+                  placeholder="Amount (₹)"
+                  className="rounded-xl border border-white/10 bg-surface px-3 py-2 text-xs text-ink placeholder:text-ink-faint/50"
+                />
+                <input
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={newRecDay}
+                  onChange={(e) => setNewRecDay(e.target.value)}
+                  placeholder="Day of Month (1-31)"
+                  className="rounded-xl border border-white/10 bg-surface px-3 py-2 text-xs text-ink placeholder:text-ink-faint/50"
+                />
+                <select
+                  value={newRecCat}
+                  onChange={(e) => setNewRecCat(e.target.value)}
+                  className="col-span-2 rounded-xl border border-white/10 bg-surface px-3 py-2 text-xs text-ink"
+                >
+                  <option value="">Select Category (Optional)</option>
+                  {expenseCats.map((c) => (
+                    <option key={c._id} value={c._id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={async () => {
+                  const amt = parseFloat(newRecAmount);
+                  if (!newRecName.trim() || !amt) return;
+                  await addRecurring({
+                    name: newRecName.trim(),
+                    amount: amt,
+                    billingCycle: "monthly",
+                    dueDay: Math.min(31, Math.max(1, parseInt(newRecDay) || 1)),
+                    categoryId: newRecCat || undefined,
+                  });
+                  setNewRecName("");
+                  setNewRecAmount("");
+                  setShowAddRec(false);
+                }}
+                disabled={!newRecName.trim() || !parseFloat(newRecAmount)}
+                className="w-full rounded-full bg-primary py-2.5 text-xs font-bold text-[#003823] disabled:opacity-40"
+              >
+                Save Subscription
+              </button>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {recurringBills.map((bill) => (
+              <div
+                key={bill._id}
+                className="flex items-center justify-between rounded-2xl border border-white/5 bg-card p-3.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-white truncate">{bill.name}</p>
+                  <p className="text-xs text-ink-faint">
+                    Renews every {bill.dueDay}th of month · {bill.categoryId ? catName(bill.categoryId) : "Bills"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold tabular text-white">
+                    {maskBalances ? "₹••••" : fmtMoney(bill.amount)}
+                  </span>
+                  <button
+                    onClick={() => payRecurring(bill._id)}
+                    title="Pay and log as expense in ledger"
+                    className="rounded-full bg-primary/15 hover:bg-primary/25 border border-primary/25 px-2.5 py-1 text-xs font-bold text-primary-bright active:scale-95 transition"
+                  >
+                    Pay &amp; Log
+                  </button>
+                  <button
+                    onClick={() => deleteRecurring(bill._id)}
+                    className="text-ink-faint hover:text-tertiary-deep p-1"
+                    title="Remove subscription"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
     </AppShell>
   );

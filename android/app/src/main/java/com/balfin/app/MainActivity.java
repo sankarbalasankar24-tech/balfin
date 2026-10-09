@@ -23,19 +23,24 @@ public class MainActivity extends BridgeActivity {
     super.onCreate(savedInstanceState);
     // Hand the WebView's Convex URL to the daily summary notifier and arm
     // the 21:00 exact alarm (idempotent — re-arms every launch).
-    bridge.getWebView().post(() -> bridge.getWebView().evaluateJavascript(
-        "(function(){try{return localStorage.getItem('balfin.convexUrl')||"+
-        "localStorage.getItem('balfin.convexUrlSaved')||''}catch(e){return ''}})()",
-        value -> {
-          String url = value == null ? "" : value.replaceAll("^\\\"|\\\"$", "");
-          if (!url.isEmpty()) {
-            SharedPreferences.Editor ed = getSharedPreferences(
-                QuickAddTogglePlugin.PREFS, MODE_PRIVATE).edit();
-            ed.putString(DailySummaryReceiver.KEY_CONVEX_URL, url);
-            ed.apply();
-          }
-          DailySummaryReceiver.scheduleNext(this);
-        }));
+    if (bridge != null && bridge.getWebView() != null) {
+      bridge.getWebView().post(() -> {
+        if (bridge == null || bridge.getWebView() == null) return;
+        bridge.getWebView().evaluateJavascript(
+            "(function(){try{return localStorage.getItem('balfin.convexUrl')||"+
+            "localStorage.getItem('balfin.convexUrlSaved')||''}catch(e){return ''}})()",
+            value -> {
+              String url = value == null ? "" : value.replaceAll("^\\\"|\\\"$", "");
+              if (!url.isEmpty()) {
+                SharedPreferences.Editor ed = getSharedPreferences(
+                    QuickAddTogglePlugin.PREFS, MODE_PRIVATE).edit();
+                ed.putString(DailySummaryReceiver.KEY_CONVEX_URL, url);
+                ed.apply();
+              }
+              DailySummaryReceiver.scheduleNext(this);
+            });
+      });
+    }
     handleIntent(getIntent());
   }
 
@@ -75,7 +80,11 @@ public class MainActivity extends BridgeActivity {
 
             @Override
             public void onAuthenticationError(int errCode, CharSequence errString) {
-              // keep the webview hidden; user can retry by re-opening the app
+              // Restore WebView alpha so user can enter PIN or retry in the security gate
+              if (bridge != null && bridge.getWebView() != null) {
+                bridge.getWebView().setAlpha(1f);
+              }
+              lockChecked = true;
             }
           });
       androidx.biometric.BiometricPrompt.PromptInfo info =

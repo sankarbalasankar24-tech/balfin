@@ -51,10 +51,20 @@ public class QuickAddActivity extends Activity {
         .setHttpAllowed(false)
         .addPathHandler("/", path -> {
           try {
-            InputStream is = getAssets().open("public" + path);
-            String mime = URLConnection.guessContentTypeFromName(path);
-            if (mime == null) mime = "application/octet-stream";
-            return new WebResourceResponse(mime, null, is);
+            String cleanPath = path.startsWith("/") ? path.substring(1) : path;
+            InputStream is = getAssets().open("public/" + cleanPath);
+            String mime = "application/octet-stream";
+            if (path.endsWith(".html")) mime = "text/html";
+            else if (path.endsWith(".js") || path.endsWith(".mjs")) mime = "application/javascript";
+            else if (path.endsWith(".css")) mime = "text/css";
+            else if (path.endsWith(".json")) mime = "application/json";
+            else if (path.endsWith(".svg")) mime = "image/svg+xml";
+            else if (path.endsWith(".png")) mime = "image/png";
+            else {
+              String guessed = URLConnection.guessContentTypeFromName(path);
+              if (guessed != null) mime = guessed;
+            }
+            return new WebResourceResponse(mime, "utf-8", is);
           } catch (IOException e) {
             return null;
           }
