@@ -82,7 +82,7 @@ export default function Ledger() {
                 : "border-tertiary-deep/30 bg-tertiary-deep/15 text-tertiary-deep"
           }`}
         >
-          {t.kind === "transfer" ? <ArrowLeftRight size={17} /> : <CatIcon name={categories.find((c) => c._id === t.categoryId)?.icon} size={17} />}
+          {t.kind === "transfer" ? <ArrowLeftRight size={17} /> : <CatIcon name={categories.find((c) => c._id === t.categoryId)?.icon} categoryName={categories.find((c) => c._id === t.categoryId)?.name} size={19} />}
         </span>
         <div className="min-w-0">
           <div className="flex items-center gap-2">

@@ -384,7 +384,7 @@ export default function QuickEntry({ open, onClose, editId, initialKind, variant
                           : "border-white/5 bg-surface-lowest text-ink-soft hover:border-white/15"
                       }`}
                     >
-                      <CatIcon name={c.icon} size={14} />
+                      <CatIcon name={c.icon} categoryName={c.name} size={16} />
                       <span>{c.name}</span>
                     </button>
                   );

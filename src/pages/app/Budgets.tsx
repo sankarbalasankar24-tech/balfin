@@ -244,7 +244,7 @@ export default function Budgets() {
                           : "bg-primary/10 text-primary"
                     }`}
                   >
-                    <CatIcon name={c.icon} size={16} />
+                    <CatIcon name={c.icon} categoryName={c.name} size={18} />
                   </span>
                   <div>
                     <h4 className="text-sm font-semibold">{c.name}</h4>

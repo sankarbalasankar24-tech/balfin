@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { NavLink as RRNavLink, useLocation, useNavigate } from "react-router-dom";
-import { Home, PieChart, List, TrendingUp, Settings, Plus } from "lucide-react";
+import { Home, PieChart, List, TrendingUp, Settings } from "lucide-react";
 import QuickEntry from "./QuickEntry";
-import FloatingQuickBubble from "./FloatingQuickBubble";
-import AppSimulatorModal from "./AppSimulatorModal";
 import SecurityGate from "./SecurityGate";
 import { useFinance } from "./FinanceContext";
 
@@ -29,10 +27,6 @@ export default function AppShell({
     isLocked,
     savedPin,
     unlock,
-    floatingBubbleEnabled,
-    quickAddGesture,
-    isSimulatingApp,
-    setIsSimulatingApp,
   } = useFinance();
 
   const [entry, setEntry] = useState<{
@@ -54,10 +48,9 @@ export default function AppShell({
 
   const openEntry = (editId: string | null = null) =>
     setEntry({ open: true, editId });
+
   const openEntryWithKind = (kind: "expense" | "income") =>
     setEntry({ open: true, editId: null, initialKind: kind });
-
-  const showBubble = floatingBubbleEnabled && quickAddGesture === "bubble";
 
   return (
     <EntryEditContext.Provider value={{ openEntry, openEntryWithKind }}>
@@ -72,24 +65,6 @@ export default function AppShell({
         >
           {children}
         </main>
-
-        {/* Floating Quick Add Bubble (Instagram reel feature) */}
-        {showBubble && (
-          <FloatingQuickBubble
-            onOpenQuickAdd={(kind) => {
-              if (kind) openEntryWithKind(kind);
-              else openEntry();
-            }}
-            onOpenSimulator={() => setIsSimulatingApp(true)}
-            isSimulating={isSimulatingApp}
-          />
-        )}
-
-        {/* Floating Simulator over external app */}
-        <AppSimulatorModal
-          open={isSimulatingApp}
-          onClose={() => setIsSimulatingApp(false)}
-        />
 
         {/* Bottom Nav */}
         <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-lg -translate-x-1/2 rounded-t-2xl bg-surface-low px-2 pb-[max(env(safe-area-inset-bottom),0.4rem)] pt-1.5 shadow-[0_8px_24px_-4px_rgba(0,0,0,0.45)]">

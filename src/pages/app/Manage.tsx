@@ -104,7 +104,8 @@ export default function Manage() {
     lockApp,
     maskBalances,
     setMaskBalances,
-    setIsSimulatingApp,
+    bubbleOpacity,
+    setBubbleOpacity,
   } = useFinance();
 
   const [tab, setTab] = useState<Tab>("categories");
@@ -114,7 +115,6 @@ export default function Manage() {
   const [showScriptHelp, setShowScriptHelp] = useState(false);
   const [copiedScript, setCopiedScript] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
-  const [showApkModal, setShowApkModal] = useState(false);
 
   const backupFreq = (sheetSync?.backupFrequency as SheetBackupFrequency | undefined) ?? "daily";
 
@@ -327,7 +327,7 @@ function writeTab_(name, headers, rows) {
             </label>
           </div>
 
-          {/* Quick-Add Floating Bubble (The Instagram Reel Feature) */}
+          {/* Quick-Add Floating Bubble */}
           <div className="space-y-3 rounded-2xl border border-primary/20 bg-card p-5 shadow-[0_4px_24px_rgba(0,200,136,0.08)]">
             <div className="flex items-center justify-between">
               <h3 className="flex items-center gap-2 text-sm font-bold text-white">
@@ -337,14 +337,9 @@ function writeTab_(name, headers, rows) {
                 Floating Quick-Add Bubble
               </h3>
               <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-[10px] font-bold text-primary-bright">
-                Interactive
+                Active
               </span>
             </div>
-
-            <p className="text-[11px] text-ink-faint leading-relaxed">
-              Initiate a floating pop-up screen over <b>any app</b> (Instagram, YouTube, Swiggy, Uber) to record expenses with an instant auto date/time stamp — syncing to your database and Google Sheets in the background!
-            </p>
-
             <div className="space-y-2">
               {GESTURES.map((g) => {
                 const active = quickAddGesture === g.key;
@@ -382,23 +377,45 @@ function writeTab_(name, headers, rows) {
               })}
             </div>
 
-            {/* Simulated Live Reel Demo Button */}
-            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-primary-bright flex items-center gap-1.5">
-                  <Smartphone size={14} /> Test Live Experience (Reel Demo)
-                </span>
+            {/* Bubble Transparency Adjustment Option */}
+            {quickAddGesture === "bubble" && (
+              <div className="rounded-xl border border-white/10 bg-surface-low p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-white">Bubble Transparency</span>
+                  <span className="text-xs font-bold text-primary-bright tabular-nums">
+                    {Math.round(bubbleOpacity * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.25"
+                  max="1.0"
+                  step="0.05"
+                  value={bubbleOpacity}
+                  onChange={(e) => setBubbleOpacity(parseFloat(e.target.value))}
+                  className="w-full accent-primary h-1.5 bg-surface-2 rounded-lg cursor-pointer"
+                />
+                <div className="flex items-center justify-between text-[10px] text-ink-faint">
+                  <span>Translucent (25%)</span>
+                  <div className="flex gap-1.5">
+                    {[0.5, 0.75, 0.9, 1.0].map((val) => (
+                      <button
+                        key={val}
+                        onClick={() => setBubbleOpacity(val)}
+                        className={`px-2 py-0.5 rounded-full border text-[10px] transition ${
+                          Math.abs(bubbleOpacity - val) < 0.04
+                            ? "border-primary bg-primary/20 text-primary-bright font-bold"
+                            : "border-white/10 bg-surface-2 text-ink-soft hover:text-white"
+                        }`}
+                      >
+                        {Math.round(val * 100)}%
+                      </button>
+                    ))}
+                  </div>
+                  <span>Solid (100%)</span>
+                </div>
               </div>
-              <p className="text-[11px] text-ink-faint leading-tight">
-                Preview how the floating bubble overlays directly on top of Instagram or external apps without opening BalFin:
-              </p>
-              <button
-                onClick={() => setIsSimulatingApp(true)}
-                className="w-full flex items-center justify-center gap-2 rounded-full bg-primary py-2.5 text-xs font-bold text-[#003823] shadow-md active:scale-98 transition"
-              >
-                <Smartphone size={14} /> Launch Instagram Overlay Simulator
-              </button>
-            </div>
+            )}
 
             {quickAddGesture === "bubble" && isNative && overlayGranted === false && (
               <div className="space-y-2 rounded-xl bg-surface-low px-3 py-2.5">
@@ -585,26 +602,7 @@ function writeTab_(name, headers, rows) {
             </div>
           </div>
 
-          {/* Android APK & Sideload Guide */}
-          <div className="space-y-3 rounded-2xl border border-white/5 bg-card p-5">
-            <div className="flex items-center justify-between">
-              <h3 className="flex items-center gap-2 text-sm font-bold text-white">
-                <Smartphone size={15} className="text-primary-bright" /> Install as Android APK
-              </h3>
-              <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-[10px] font-bold text-primary-bright">
-                Capacitor Native
-              </span>
-            </div>
-            <p className="text-[11px] text-ink-faint leading-relaxed">
-              Run BalFin natively on your Android device with the persistent floating bubble, home-screen widgets, and app shortcuts.
-            </p>
-            <button
-              onClick={() => setShowApkModal(true)}
-              className="w-full flex items-center justify-center gap-2 rounded-full bg-surface-low border border-white/10 hover:border-primary/40 py-2.5 text-xs font-bold text-white active:scale-98 transition shadow-sm"
-            >
-              <Smartphone size={14} className="text-primary-bright" /> How to Install APK on Phone
-            </button>
-          </div>
+
 
           {/* Data Export & Backup */}
           <div className="space-y-2">
@@ -630,10 +628,7 @@ function writeTab_(name, headers, rows) {
         />
       )}
 
-      {/* Android APK Guide Modal */}
-      {showApkModal && (
-        <AndroidApkGuideModal onClose={() => setShowApkModal(false)} />
-      )}
+
     </AppShell>
   );
 
@@ -690,7 +685,7 @@ function writeTab_(name, headers, rows) {
           <div key={c._id} className="rounded-2xl border border-white/5 bg-card p-4">
             <div className="flex items-center gap-2.5">
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-primary-bright">
-                <CatIcon name={c.icon} size={14} />
+                <CatIcon name={c.icon} categoryName={c.name} size={16} />
               </span>
               {renaming === c._id ? (
                 <input
@@ -734,7 +729,7 @@ function writeTab_(name, headers, rows) {
                   key={s.name + i}
                   className="flex items-center gap-1 rounded-full bg-surface-low px-2.5 py-1 text-xs text-ink-soft"
                 >
-                  <CatIcon name={s.icon} size={10} />
+                  <CatIcon name={s.icon} categoryName={s.name} size={12} />
                   {s.name}
                   <button
                     onClick={() => deleteSub(c._id, i)}
@@ -1134,173 +1129,6 @@ function PINSetupModal({
               </button>
             </>
           )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AndroidApkGuideModal({ onClose }: { onClose: () => void }) {
-  const [activeTab, setActiveTab] = useState<"github" | "local" | "pwa">("github");
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade">
-      <div className="w-full max-w-md max-h-[88vh] flex flex-col rounded-3xl border border-white/10 bg-surface-low shadow-2xl text-ink overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-white/5">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary-bright">
-              <Smartphone size={18} />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-white">Install BalFin on Android</h3>
-              <p className="text-[11px] text-ink-faint">3 ways to run BalFin on your phone</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="rounded-full bg-surface-2 p-1.5 text-ink-soft hover:text-white">
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Method Switcher */}
-        <div className="px-5 pt-3">
-          <div className="grid grid-cols-3 gap-1 rounded-full bg-surface-lowest p-1 border border-white/5">
-            {[
-              { id: "github", label: "GitHub APK" },
-              { id: "local", label: "Local Build" },
-              { id: "pwa", label: "Instant PWA" },
-            ].map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setActiveTab(m.id as any)}
-                className={`rounded-full py-1.5 text-xs font-bold transition ${
-                  activeTab === m.id
-                    ? "bg-primary text-[#003823] shadow"
-                    : "text-ink-faint hover:text-ink"
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Scrollable Guide Content */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs no-scrollbar">
-          {activeTab === "github" && (
-            <div className="space-y-3 animate-fade">
-              <div className="rounded-2xl border border-primary/20 bg-primary/5 p-3.5 space-y-1.5">
-                <p className="font-bold text-primary-bright">Option 1: Pre-Built APK via GitHub (Recommended)</p>
-                <p className="text-[11px] text-ink-faint leading-relaxed">
-                  Every time code is pushed to your repo, GitHub Actions automatically compiles the Android APK for you. You don't need Android Studio or SDK installed locally!
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <p className="font-bold text-white uppercase text-[10px] tracking-wider">Step-by-Step Instructions:</p>
-                <ol className="list-decimal pl-4 space-y-2 text-ink-soft leading-relaxed">
-                  <li>
-                    Push the latest code to your GitHub repo (branch <code className="bg-surface-2 px-1 rounded text-primary">main</code>).
-                  </li>
-                  <li>
-                    Open your repository on GitHub in your browser:
-                    <br />
-                    <span className="font-mono text-[10px] text-white">github.com/sankarbalasankar24-tech/balfin</span>
-                  </li>
-                  <li>
-                    Click the <b className="text-white">Actions</b> tab at the top.
-                  </li>
-                  <li>
-                    Click the latest completed workflow run: <b className="text-white">"Build Android APK"</b>.
-                  </li>
-                  <li>
-                    Scroll to the bottom under <b className="text-white">Artifacts</b> and download <b className="text-primary-bright">BalFin-APK</b>.
-                  </li>
-                  <li>
-                    Unzip the file and send <code className="bg-surface-2 px-1 rounded text-white">app-debug.apk</code> to your phone (via WhatsApp, Google Drive, or USB).
-                  </li>
-                  <li>
-                    Tap the APK file on your Android phone and select <b className="text-white">Install</b>. (Allow "Install from unknown sources" if prompted).
-                  </li>
-                </ol>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "local" && (
-            <div className="space-y-3 animate-fade">
-              <div className="rounded-2xl border border-white/10 bg-surface-2 p-3.5 space-y-1.5">
-                <p className="font-bold text-white">Option 2: Local Command Line Build</p>
-                <p className="text-[11px] text-ink-faint leading-relaxed">
-                  If you have Android Studio or the Android SDK with Java 21 on your machine, you can assemble the APK locally in 1 step:
-                </p>
-              </div>
-
-              <div className="space-y-1.5">
-                <p className="font-bold text-white uppercase text-[10px] tracking-wider">Terminal Command:</p>
-                <div className="rounded-xl bg-surface-lowest p-3 font-mono text-[11px] text-primary-bright border border-white/5 select-all">
-                  npm run android:apk
-                </div>
-                <p className="text-[10px] text-ink-faint">
-                  Output path: <code className="text-white">android/app/build/outputs/apk/debug/app-debug.apk</code>
-                </p>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "pwa" && (
-            <div className="space-y-3 animate-fade">
-              <div className="rounded-2xl border border-secondary/20 bg-secondary/5 p-3.5 space-y-1.5">
-                <p className="font-bold text-secondary">Option 3: Instant 1-Tap Web App (No Computer Needed)</p>
-                <p className="text-[11px] text-ink-faint leading-relaxed">
-                  You can install BalFin directly onto your Android home screen as a standalone WebAPK right now:
-                </p>
-              </div>
-
-              <ol className="list-decimal pl-4 space-y-2 text-ink-soft leading-relaxed">
-                <li>
-                  Open this application URL in <b>Google Chrome</b> on your Android phone.
-                </li>
-                <li>
-                  Tap the Chrome menu button (<b>⋮</b> three vertical dots) in the top right corner.
-                </li>
-                <li>
-                  Tap <b className="text-white">"Install app"</b> or <b className="text-white">"Add to Home screen"</b>.
-                </li>
-                <li>
-                  Tap <b className="text-white">Install</b>. BalFin will appear in your phone's app drawer with its native logo and offline support!
-                </li>
-              </ol>
-            </div>
-          )}
-
-          {/* Critical Android Permissions for the Floating Bubble */}
-          <div className="rounded-2xl border border-white/5 bg-surface-2 p-4 space-y-2 mt-2">
-            <p className="font-bold text-white flex items-center gap-1.5 text-xs">
-              <Shield size={14} className="text-primary-bright" /> Essential Android Settings:
-            </p>
-            <div className="space-y-2 text-[11px] text-ink-soft leading-relaxed">
-              <p>
-                • <b className="text-white">"Display over other apps"</b>: Required so the floating quick-add bubble can hover over Instagram, WhatsApp, Uber, etc. (Settings → Apps → BalFin → Display over other apps → Allow).
-              </p>
-              <p>
-                • <b className="text-white">Battery Unrestricted</b>: Keeps the floating bubble alive when you "clean all" apps or lock the screen. (Settings → Apps → BalFin → Battery → Set to "Unrestricted").
-              </p>
-              <p>
-                • <b className="text-white">Home Screen Widget</b>: Long-press your home screen → Widgets → BalFin → Drag the Quick Add widget.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-white/5 bg-surface-low">
-          <button
-            onClick={onClose}
-            className="w-full rounded-full bg-primary py-2.5 text-xs font-bold text-[#003823]"
-          >
-            Got It
-          </button>
         </div>
       </div>
     </div>

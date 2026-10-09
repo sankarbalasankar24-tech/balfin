@@ -602,7 +602,7 @@ export default function Overview() {
                     t.kind === "income" ? "bg-primary/15 text-primary-bright" : "bg-tertiary-deep/20 text-tertiary-deep"
                   }`}
                 >
-                  <CatIcon name={t.categoryId ? categories.find((c) => c._id === t.categoryId)?.icon : undefined} size={17} />
+                  <CatIcon name={t.categoryId ? categories.find((c) => c._id === t.categoryId)?.icon : undefined} categoryName={t.categoryId ? catName(t.categoryId) : undefined} size={20} />
                 </span>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold leading-tight">

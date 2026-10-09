@@ -5,14 +5,18 @@
             <gradient
                 android:angle="270"
                 android:startColor="#42E5A2"
-                android:endColor="#00C888"
+                android:endColor="#00A86B"
                 android:type="linear" />
             <stroke
-                android:width="2dp"
-                android:color="#33FFFFFF" />
+                android:width="2.5dp"
+                android:color="#99FFFFFF" />
         </shape>
     </item>
     <item
+        android:top="16dp"
+        android:bottom="16dp"
+        android:left="16dp"
+        android:right="16dp"
         android:drawable="@android:drawable/ic_input_add"
         android:gravity="center" />
 </layer-list>

@@ -9,6 +9,7 @@ import Ledger from "./pages/app/Ledger";
 import Investments from "./pages/app/Investments";
 import Budgets from "./pages/app/Budgets";
 import Manage from "./pages/app/Manage";
+import StandaloneQuickAdd from "./pages/app/StandaloneQuickAdd";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -19,8 +20,8 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/" element={<Navigate to="/app" replace />} />
           <Route path="/intro" element={<Landing />} />
           <Route path="/app" element={<Overview />} />
-          {/* Native gesture popup: Overview + the quick-entry wizard on top. */}
-          <Route path="/app/quick-add" element={<Overview />} />
+          {/* Native gesture & floating bubble: Standalone full-screen quick-add */}
+          <Route path="/app/quick-add" element={<StandaloneQuickAdd />} />
           <Route path="/app/ledger" element={<Ledger />} />
           <Route path="/app/invest" element={<Investments />} />
           <Route path="/app/budgets" element={<Budgets />} />

@@ -70,6 +70,9 @@ export interface QuickAddPlugin {
   restartServices: (o?: Record<string, never>) => Promise<unknown>;
   isIgnoringBatteryOptimizations: (o?: Record<string, never>) => Promise<{ granted?: boolean }>;
   requestIgnoreBatteryOptimizations: (o?: Record<string, never>) => Promise<unknown>;
+  setBubbleOpacity?: (o: { opacity: number }) => Promise<unknown>;
+  getBubbleOpacity?: (o?: Record<string, never>) => Promise<{ opacity: number }>;
+  postJson?: (o: { url: string; data: string }) => Promise<{ status: number; ok: boolean }>;
 }
 
 export function getQuickAddPlugin(): QuickAddPlugin | null {
@@ -147,6 +150,8 @@ interface FinanceCtx {
   setQuickAddGesture: (g: QuickAddGesture) => void;
   floatingBubbleEnabled: boolean;
   setFloatingBubbleEnabled: (b: boolean) => void;
+  bubbleOpacity: number;
+  setBubbleOpacity: (op: number) => void;
   isSimulatingApp: boolean;
   setIsSimulatingApp: (s: boolean) => void;
 
@@ -466,7 +471,18 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const [currency, setCurrencyPref] = useLocalStore<string>("currency", "INR");
   const [quickAddGesture, setQuickAddGesturePref] = useLocalStore<QuickAddGesture>("quickAddGesture", "bubble");
   const [floatingBubbleEnabled, setFloatingBubbleEnabled] = useLocalStore<boolean>("floatingBubbleEnabled", true);
+  const [bubbleOpacity, setBubbleOpacityStore] = useLocalStore<number>("bubbleOpacity", 0.90);
   const [isSimulatingApp, setIsSimulatingApp] = useState(false);
+
+  const setBubbleOpacity = useCallback((op: number) => {
+    const clamped = Math.max(0.2, Math.min(1.0, op));
+    setBubbleOpacityStore(clamped);
+    getQuickAddPlugin()?.setBubbleOpacity?.({ opacity: clamped })?.catch(() => {});
+  }, [setBubbleOpacityStore]);
+
+  useEffect(() => {
+    getQuickAddPlugin()?.setBubbleOpacity?.({ opacity: bubbleOpacity })?.catch(() => {});
+  }, [bubbleOpacity]);
 
   // Security State
   const [savedPin, setSavedPin] = useLocalStore<string | null>("appPin", null);
@@ -1067,6 +1083,8 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     setQuickAddGesture: setQuickAddGesturePref,
     floatingBubbleEnabled,
     setFloatingBubbleEnabled,
+    bubbleOpacity,
+    setBubbleOpacity,
     isSimulatingApp,
     setIsSimulatingApp,
 
